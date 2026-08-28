@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf 'Error: Characteristic write failed for %s\n' "$*"
+exit 0

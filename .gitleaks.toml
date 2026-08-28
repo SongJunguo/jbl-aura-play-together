@@ -1,0 +1,18 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Pinned public upstream Git commit identifiers"
+regexTarget = "match"
+regexes = [
+  '''cdf3b8f3869b00c5e3e8711d8c532aa6aee7cf12''',
+  '''027ee65fb6da362a88023cbb043848c4160c313d''',
+  '''68f7c244649c19fabdb40d5d5909e6cf1cb3eb9e''',
+  '''9368148a8b7296d352e0be652058c54a62f82294''',
+  '''cfeef374d699f9f35d11d320be5f6c2393c80d7b''',
+  '''e6111667eaab8ee5816345605ac212f8d7d14725''',
+  '''23e091107be88f8d02987006f3056e25f50ee7c8''',
+  '''48bb4fd18c3d6d70a38873fa1f93271547433328''',
+  '''7d10bdb1ebe0c5a77c9a4c14ebe4580bd3735309''',
+  '''7f347ca97922b6680993d4874fbadbc479449608''',
+]

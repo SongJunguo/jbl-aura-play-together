@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ " $* " == *' --char-write-req '* ]]; then
+  printf 'Characteristic value was written successfully\n'
+  exit 0
+fi
+
+while IFS= read -r command; do
+  case "${command}" in
+    connect) printf 'Connection successful\n' ;;
+    'mtu '*) printf 'MTU was exchanged successfully: %s\n' "${command#mtu }" ;;
+    'char-write-req '*) printf 'Characteristic value was written successfully\n' ;;
+    exit) exit 0 ;;
+  esac
+done
