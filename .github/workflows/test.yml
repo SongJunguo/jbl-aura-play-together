@@ -15,7 +15,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install offline test dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq ripgrep shellcheck xxd
+        run: sudo apt-get update && sudo apt-get install -y bluez jq ripgrep shellcheck xxd
       - name: Syntax
         run: |
           bash -n bin/jbl-aura-link tests/test.sh tests/session_test.sh tests/privacy.sh tests/fixtures/*
