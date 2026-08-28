@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# The pactl test double is invoked indirectly through PACTL_BIN.
+# shellcheck disable=SC2317,SC2329
 set -euo pipefail
 
 test_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -150,8 +152,6 @@ reset_fake_pactl() {
   fake_emit_operations=0
 }
 
-# Invoked indirectly through PACTL_BIN by the sourced production script.
-# shellcheck disable=SC2329
 pactl() {
   case "${1:-}" in
     list)
