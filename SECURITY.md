@@ -16,6 +16,24 @@ This is a convenience, not a guarantee that every external tool is safe to
 paste publicly. Review all logs manually and replace local identifiers with
 role labels before sharing.
 
+The persistent supervisor accepts commands only through a local Unix socket
+with mode `0600` inside a mode-`0700` runtime directory. Its JSON state and log
+files are also user-private and deliberately omit configured device addresses.
+The output buffer is bounded, and the implementation has no listener on a TCP
+port, cloud API, account token, or GPU/model process.
+
+Bluetooth utilities still need device addresses as local process arguments.
+Consequently, a same-user/root process listing or an external systemd diagnostic
+can reveal them on the host. Do not paste `ps`, `systemctl status`, a raw session
+log, or the private config into a public issue. The local permission boundary is
+not a promise that operating-system administrators cannot inspect the process.
+
+The transient user-systemd unit uses main-process-first termination so the
+supervisor can attempt the receiver-first unlink sequence before its transport
+children are reaped. This reduces graceful-stop risk; it cannot make power loss,
+speaker power-off, unconditional process killing, or a later closed Bluetooth
+connectable window transactional.
+
 Never commit:
 
 - real device configuration;

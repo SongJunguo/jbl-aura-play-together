@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+role='jbl'
+connect_attempts=0
+for argument in "$@"; do
+  [[ "${argument}" == '-p' ]] && role='aura'
+done
+
+printf '[fake][%s]> ' "${role}"
+while IFS= read -r command; do
+  case "${command}" in
+    connect)
+      connect_attempts=$((connect_attempts + 1))
+      if [[ "${role}" == 'aura' &&
+        "${connect_attempts}" -le "${FAKE_SESSION_CONNECT_FAILS:-0}" ]]; then
+        printf '\nError: connect failed: Host is down\n[fake][%s]> ' "${role}"
+      else
+        printf '\nConnection successful\n[fake][%s]> ' "${role}"
+      fi
+      ;;
+    mtu\ *)
+      printf '\nMTU was exchanged successfully: %s\n[fake][%s]> ' \
+        "${command#mtu }" "${role}"
+      ;;
+    char-write-req\ *)
+      frame="${command##* }"
+      if [[ "${FAKE_SESSION_FAIL:-}" == 'aura-off' && "${role}" == 'aura' &&
+        "${frame}" == 'aa1304003c0100' ]]; then
+        printf '\nCommand Failed: injected Aura OFF failure\n[fake][%s]> ' "${role}"
+        continue
+      fi
+      printf '\nCharacteristic value was written successfully\n'
+      if [[ "${role}" == 'aura' ]]; then
+        printf 'Notification handle = 0x03ec value: aa 00 02 13 00\n'
+      elif [[ "${frame}" == 504c011f* || "${frame}" == 504c021f* ]]; then
+        printf '%s\n' \
+          'Indication handle = 0x002a value: 50 4c 00 80 1e 00 00 00 00 00 12 00 7b 22 65 72 72 6f 72 5f 63 6f 64 65 22 3a 22 30 22 7d'
+      fi
+      printf '[fake][%s]> ' "${role}"
+      ;;
+    exit)
+      exit 0
+      ;;
+    *)
+      printf '\nCommand Failed: unexpected fake command\n[fake][%s]> ' "${role}"
+      ;;
+  esac
+done

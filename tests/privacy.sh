@@ -40,9 +40,11 @@ if [[ -n "${mac_hits}" ]]; then
   failed=1
 fi
 
-linux_home_pattern='/'"home/"
-mac_home_pattern='/'"Users/"
-windows_home_pattern='[A-Za-z]:\\\\'"Users"'\\\\'
+home_word='home'
+users_word='Users'
+linux_home_pattern="/${home_word}/"
+mac_home_pattern="/${users_word}/"
+windows_home_pattern="[A-Za-z]:\\\\${users_word}\\\\"
 path_hits="$(scan "(${linux_home_pattern}|${mac_home_pattern}|${windows_home_pattern})" || true)"
 if [[ -n "${path_hits}" ]]; then
   printf 'privacy check: absolute user path found:\n%s\n' "${path_hits}" >&2

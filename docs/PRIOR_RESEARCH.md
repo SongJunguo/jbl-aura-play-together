@@ -40,13 +40,14 @@ method and part of the transport family, not our final mechanism.
 
 This project has unusually careful reverse-engineering notes with confirmed,
 tentative, and open findings separated. Its PartyBox 520 work maps parts of DFFD
-and reports a second rotating LE identity that advertises `0x1853` (Public
-Broadcast Announcement) separately from the DFFD identity. It explicitly leaves
-Auracast group commands as an open question.
+and reports a second rotating LE identity that advertises `0x1853` separately
+from the DFFD identity. Bluetooth SIG Assigned Numbers define `0x1853` as Common
+Audio Service; Public Broadcast Announcement is `0x1856`. The project explicitly
+leaves Auracast group commands as an open question.
 
-That separate-identity observation is the best public clue for why a DFFD role
-may not describe the actual LE Audio broadcast set. It still does not explain
-our exact role value or the inconclusive Aura BASS read.
+That separate-identity observation shows DFFD need not be the only LE identity,
+but it does not prove that the second identity is a broadcast source. It also
+does not explain our cached enum value or the inconclusive Aura BASS read.
 
 ### Google Bumble and Collabora's BlueZ demo
 
@@ -128,6 +129,7 @@ implement `7957` plus Aura AA association.
 - [BlueKitchen BTstack](https://github.com/bluekitchen/btstack)
 - [STM32WBA Broadcast Assistant example](https://github.com/stm32-hotspot/STM32WBA-BLE-Audio-Broadcast-Assistant)
 - [Bluetooth SIG BASS 1.0.1](https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/BASS_v1.0.1/out/en/index-en.html)
+- [Bluetooth SIG Assigned Numbers](https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Assigned_Numbers/out/en/index-en.html)
 - [Authentics firmware release notes](https://support.jbl.com/ca/en/howto/authentics-200-300-500-software-update-release-notes-us/000043744.html)
 - [Aura Studio 5 product page](https://www.harmankardon.com/AURA-STUDIO-5.html)
 
@@ -140,11 +142,14 @@ The public literature supports four cautious conclusions:
 
 1. AA/TLV is a real, independently reproduced JBL/Harman control family.
 2. DFFD is a vendor control/discovery advertisement and may coexist with a
-   separate standard Public Broadcast Announcement identity.
+   separate Common Audio Service identity; the inspected source does not prove
+   that identity also carries a Public Broadcast Announcement.
 3. JBL receiver filtering via Harman manufacturer data is publicly reproduced,
    but not yet verified for this exact pair.
-4. No inspected repository resolves the Authentics 300 `RECEIVER(2)` plus the
-   inconclusive Aura BASS read.
+4. No inspected repository resolves the Authentics 300 data-plane state or the
+   inconclusive Aura BASS read. Static analysis in this project later showed
+   that DFFD `RECEIVER(2)` and OneOS `device_status=2` are different enums, so
+   their equal raw value is not itself a protocol contradiction.
 
 This repository publishes that unknown instead of hiding it behind a successful
 audio demo.
