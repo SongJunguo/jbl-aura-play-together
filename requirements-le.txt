@@ -1,0 +1,3 @@
+# Optional cold-discovery dependency for AURA_TRANSPORT=auto/le.
+# The held BR/EDR control-session path remains standard-library-only.
+dbus-fast>=5.0.0,<6

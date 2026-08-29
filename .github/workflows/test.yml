@@ -15,16 +15,23 @@ jobs:
         with:
           persist-credentials: false
       - name: Install offline test dependencies
-        run: sudo apt-get update && sudo apt-get install -y bluez jq ripgrep shellcheck xxd
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bluez jq python3-venv ripgrep shellcheck xxd
+          python3 -m venv "${RUNNER_TEMP}/jbl-aura-test-venv"
+          "${RUNNER_TEMP}/jbl-aura-test-venv/bin/pip" install -r requirements-le.txt
+          echo "PYTHON_BIN=${RUNNER_TEMP}/jbl-aura-test-venv/bin/python" >>"${GITHUB_ENV}"
       - name: Syntax
         run: |
           bash -n bin/jbl-aura-link tests/test.sh tests/session_test.sh tests/privacy.sh tests/fixtures/*
-          python3 -m py_compile lib/jbl_aura_session.py
+          "${PYTHON_BIN}" -m py_compile lib/jbl_aura_session.py tests/resolver_test.py
+          "${PYTHON_BIN}" -c 'import dbus_fast'
       - name: ShellCheck
         run: shellcheck -x bin/jbl-aura-link tests/test.sh tests/session_test.sh tests/privacy.sh tests/fixtures/*
       - name: Protocol and transport mocks
         run: |
           ./tests/test.sh
-          PYTHON_BIN=python3 ./tests/session_test.sh
+          "${PYTHON_BIN}" ./tests/resolver_test.py
+          PYTHON_BIN="${PYTHON_BIN}" ./tests/session_test.sh
       - name: Public-data privacy guard
         run: ./tests/privacy.sh

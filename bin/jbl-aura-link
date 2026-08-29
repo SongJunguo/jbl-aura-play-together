@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly VERSION='0.3.0'
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly VERSION='0.4.0'
+script_source="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
+script_dir="$(cd -- "$(dirname -- "${script_source}")" && pwd)"
 config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
 config_file="${JBL_AURA_CONFIG:-${config_home}/jbl-aura-link/devices.env}"
+install_root="${JBL_AURA_INSTALL_ROOT:-${HOME}/.local/lib/jbl-aura-link}"
+user_bin_dir="${JBL_AURA_USER_BIN_DIR:-${HOME}/.local/bin}"
+user_unit_dir="${JBL_AURA_USER_UNIT_DIR:-${config_home}/systemd/user}"
 
 load_config() {
   [[ -f "${config_file}" ]] || return 0
@@ -16,14 +20,18 @@ load_config() {
       BT_ADAPTER | JBL_BT_MAC | JBL_DEVICE_NAME | JBL_GATT_HANDLE | \
         JBL_GATT_MTU | JBL_AURACAST_QUALITY | JBL_GATT_TIMEOUT | \
         JBL_CONNECT_DELAY | JBL_STEP_DELAY | AURA_BT_MAC | \
-        AURA_GATT_HANDLE | AURA_GATT_PSM | AURA_GATT_TIMEOUT | \
+        AURA_DEVICE_NAME | AURA_TRANSPORT | AURA_V4_PID | \
+        AURA_GATT_HANDLE | AURA_GATT_CCCD_HANDLE | AURA_GATT_PSM | \
+        AURA_GATT_TIMEOUT | \
         AURA_GATT_RETRIES | AURA_JOIN_DELAY | AURA_CONTROL_SETTLE | \
         BLUEZ_CONTROL_TIMEOUT | \
         SESSION_START_TIMEOUT | SESSION_CONNECT_TIMEOUT | \
-        SESSION_AURA_CONNECT_WINDOW | SESSION_WRITE_TIMEOUT | \
+        SESSION_AURA_CONNECT_WINDOW | SESSION_AURA_LE_SCAN_WINDOW | \
+        SESSION_AURA_LE_RETRIES | SESSION_AURA_LE_RETRY_DELAY | \
+        SESSION_WRITE_TIMEOUT | \
         SESSION_AURA_ACK_TIMEOUT | \
         SESSION_LAUNCH_MODE | \
-        DISCONNECT_AURA_A2DP | \
+        DISCONNECT_AURA_A2DP | BLUEZ_FULL_DISCONNECT_BEFORE_SESSION | \
         PULSEAUDIO_BLUETOOTH_GUARD | PYTHON_BIN | \
         JBL_AURA_SESSION_MANAGER)
         printf -v "${key}" '%s' "${value}"
@@ -34,6 +42,13 @@ load_config() {
 
 load_config
 
+# A one-shot override is useful for hardware acceptance without editing the
+# private configuration file.  Apply it after file loading so it really is an
+# override, including when the daemon is launched through systemd-run.
+if [[ -n "${AURA_TRANSPORT_OVERRIDE:-}" ]]; then
+  AURA_TRANSPORT="${AURA_TRANSPORT_OVERRIDE}"
+fi
+
 : "${BT_ADAPTER:=hci0}"
 : "${JBL_DEVICE_NAME:=JBL Authentics 300}"
 : "${JBL_GATT_HANDLE:=0x002a}"
@@ -42,20 +57,28 @@ load_config
 : "${JBL_GATT_TIMEOUT:=22}"
 : "${JBL_CONNECT_DELAY:=3}"
 : "${JBL_STEP_DELAY:=2}"
+: "${AURA_DEVICE_NAME:=Aura Studio 5}"
+: "${AURA_TRANSPORT:=auto}"
+: "${AURA_V4_PID:=212d}"
 : "${AURA_GATT_HANDLE:=0x03ea}"
+: "${AURA_GATT_CCCD_HANDLE:=0x03ed}"
 : "${AURA_GATT_PSM:=31}"
 : "${AURA_GATT_TIMEOUT:=12}"
 : "${AURA_GATT_RETRIES:=3}"
 : "${AURA_JOIN_DELAY:=2}"
 : "${AURA_CONTROL_SETTLE:=1}"
 : "${BLUEZ_CONTROL_TIMEOUT:=5}"
-: "${SESSION_START_TIMEOUT:=90}"
+: "${SESSION_START_TIMEOUT:=180}"
 : "${SESSION_CONNECT_TIMEOUT:=18}"
-: "${SESSION_AURA_CONNECT_WINDOW:=45}"
+: "${SESSION_AURA_CONNECT_WINDOW:=150}"
+: "${SESSION_AURA_LE_SCAN_WINDOW:=30}"
+: "${SESSION_AURA_LE_RETRIES:=2}"
+: "${SESSION_AURA_LE_RETRY_DELAY:=15}"
 : "${SESSION_WRITE_TIMEOUT:=8}"
 : "${SESSION_AURA_ACK_TIMEOUT:=8}"
 : "${SESSION_LAUNCH_MODE:=auto}"
 : "${DISCONNECT_AURA_A2DP:=true}"
+: "${BLUEZ_FULL_DISCONNECT_BEFORE_SESSION:=false}"
 : "${PULSEAUDIO_BLUETOOTH_GUARD:=auto}"
 : "${GATTTOOL_BIN:=gatttool}"
 : "${PACTL_BIN:=pactl}"
@@ -82,7 +105,12 @@ readonly SESSION_SOCKET="${SESSION_RUNTIME_DIR}/control.sock"
 readonly SESSION_LOCK="${SESSION_RUNTIME_DIR}/session.lock"
 readonly SESSION_STATE="${STATE_DIR}/session.json"
 readonly SESSION_LOG="${STATE_DIR}/session.log"
+readonly PULSE_GUARD_STATE="${STATE_DIR}/pulse-bluetooth-guard.tsv"
 readonly SESSION_UNIT='jbl-aura-link-session.service'
+readonly USER_INSTALL_ROOT="${install_root}"
+readonly USER_LAUNCHER="${user_bin_dir}/jbl-aura-link"
+readonly USER_UNIT_FILE="${user_unit_dir}/${SESSION_UNIT}"
+readonly SERVICE_TEMPLATE="${script_dir}/../systemd/jbl-aura-link-session.service.in"
 
 PULSE_BT_GUARD_ACTIVE=0
 PULSE_BT_MODULE_IDS=()
@@ -135,6 +163,13 @@ require_session_manager() {
     fail "persistent session manager not found: ${JBL_AURA_SESSION_MANAGER}"
 }
 
+require_dbus_fast() {
+  if "${PYTHON_BIN}" -c 'import dbus_fast' >/dev/null 2>&1; then
+    return 0
+  fi
+  fail 'dbus-fast is required for AURA_TRANSPORT=auto/le; install requirements-le.txt into PYTHON_BIN'
+}
+
 validate_mac() {
   [[ "$1" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]
 }
@@ -175,6 +210,17 @@ validate_config() {
     fail 'AURA_GATT_RETRIES must be a positive integer'
     return 1
   fi
+  case "${AURA_TRANSPORT,,}" in
+    auto | bredr | le) ;;
+    *)
+      fail 'AURA_TRANSPORT must be auto, bredr, or le'
+      return 1
+      ;;
+  esac
+  if [[ ! "${AURA_V4_PID}" =~ ^[[:xdigit:]]{4}$ ]]; then
+    fail 'AURA_V4_PID must contain exactly two hexadecimal bytes'
+    return 1
+  fi
   case "${PULSEAUDIO_BLUETOOTH_GUARD,,}" in
     auto | 1 | true | yes | on | 0 | false | no | off) ;;
     *)
@@ -194,7 +240,9 @@ validate_config() {
     "${JBL_STEP_DELAY}" "${AURA_GATT_TIMEOUT}" "${AURA_JOIN_DELAY}" \
     "${AURA_CONTROL_SETTLE}" "${BLUEZ_CONTROL_TIMEOUT}" \
     "${SESSION_CONNECT_TIMEOUT}" "${SESSION_WRITE_TIMEOUT}" \
-    "${SESSION_AURA_CONNECT_WINDOW}" "${SESSION_AURA_ACK_TIMEOUT}"; do
+    "${SESSION_AURA_CONNECT_WINDOW}" "${SESSION_AURA_LE_SCAN_WINDOW}" \
+    "${SESSION_AURA_LE_RETRY_DELAY}" \
+    "${SESSION_AURA_ACK_TIMEOUT}"; do
     if [[ ! "${numeric_value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
       fail 'timeouts and delays must be non-negative numbers'
       return 1
@@ -208,8 +256,13 @@ validate_config() {
     fail 'SESSION_START_TIMEOUT must be a positive integer'
     return 1
   fi
+  if [[ ! "${SESSION_AURA_LE_RETRIES}" =~ ^[0-9]+$ ]]; then
+    fail 'SESSION_AURA_LE_RETRIES must be a non-negative integer'
+    return 1
+  fi
   for numeric_value in "${SESSION_CONNECT_TIMEOUT}" "${SESSION_WRITE_TIMEOUT}" \
-    "${SESSION_AURA_CONNECT_WINDOW}" "${SESSION_AURA_ACK_TIMEOUT}"; do
+    "${SESSION_AURA_CONNECT_WINDOW}" "${SESSION_AURA_LE_SCAN_WINDOW}" \
+    "${SESSION_AURA_ACK_TIMEOUT}"; do
     if [[ "${numeric_value}" =~ ^0+([.]0+)?$ ]]; then
       fail 'persistent-session timeouts must be greater than zero'
       return 1
@@ -243,6 +296,11 @@ acquire_lock() {
   fi
   exec 9>>"${lock_file}"
   flock -n 9 || fail 'another link operation is running'
+}
+
+release_operation_lock() {
+  flock -u 9 >/dev/null 2>&1 || true
+  exec 9>&-
 }
 
 build_pl_frame() {
@@ -366,6 +424,61 @@ pulse_bluetooth_modules_present() {
   ' <<<"${module_rows}"
 }
 
+persist_pulse_bluetooth_guard() {
+  local temporary index args_hex
+  umask 077
+  mkdir -p -- "${STATE_DIR}"
+  [[ ! -L "${PULSE_GUARD_STATE}" ]] || {
+    fail 'refusing symlinked PulseAudio guard state'
+    return 1
+  }
+  temporary="$(mktemp "${STATE_DIR}/.pulse-bluetooth-guard.XXXXXX")"
+  for index in "${!PULSE_BT_MODULE_NAMES[@]}"; do
+    ((PULSE_BT_MODULE_UNLOADED[index] == 1)) || continue
+    args_hex="$(printf '%s' "${PULSE_BT_MODULE_ARGS[index]}" | xxd -p -c 1000000)"
+    printf '%s\t%s\n' "${PULSE_BT_MODULE_NAMES[index]}" "${args_hex}" >>"${temporary}"
+  done
+  chmod 600 -- "${temporary}"
+  mv -f -- "${temporary}" "${PULSE_GUARD_STATE}"
+}
+
+load_pulse_bluetooth_guard() {
+  [[ -f "${PULSE_GUARD_STATE}" ]] || return 0
+  [[ ! -L "${PULSE_GUARD_STATE}" ]] || {
+    fail 'refusing symlinked PulseAudio guard state'
+    return 1
+  }
+  PULSE_BT_MODULE_IDS=()
+  PULSE_BT_MODULE_NAMES=()
+  PULSE_BT_MODULE_ARGS=()
+  PULSE_BT_MODULE_UNLOADED=()
+  local module_name args_hex module_args
+  while IFS=$'\t' read -r module_name args_hex; do
+    case "${module_name}" in
+      module-bluetooth-policy | module-bluetooth-discover) ;;
+      *)
+        fail 'invalid module name in PulseAudio guard state'
+        return 1
+        ;;
+    esac
+    if [[ -n "${args_hex}" && \
+      ("${args_hex}" == *[![:xdigit:]]* || $((${#args_hex} % 2)) -ne 0) ]]; then
+      fail 'invalid module arguments in PulseAudio guard state'
+      return 1
+    fi
+    module_args="$(printf '%s' "${args_hex}" | xxd -r -p)"
+    PULSE_BT_MODULE_IDS+=('')
+    PULSE_BT_MODULE_NAMES+=("${module_name}")
+    PULSE_BT_MODULE_ARGS+=("${module_args}")
+    PULSE_BT_MODULE_UNLOADED+=(1)
+  done <"${PULSE_GUARD_STATE}"
+  ((${#PULSE_BT_MODULE_NAMES[@]} > 0)) || {
+    fail 'empty PulseAudio guard state'
+    return 1
+  }
+  PULSE_BT_GUARD_ACTIVE=1
+}
+
 suspend_pulse_bluetooth_modules() {
   pactl_available || {
     fail 'PulseAudio guard requested but pactl is unavailable'
@@ -404,16 +517,29 @@ suspend_pulse_bluetooth_modules() {
     fi
     PULSE_BT_MODULE_UNLOADED[index]=1
   done
+  if ! persist_pulse_bluetooth_guard; then
+    restore_pulse_bluetooth_modules || true
+    fail 'could not persist PulseAudio restoration state'
+    return 1
+  fi
   log "temporarily suspended ${#PULSE_BT_MODULE_IDS[@]} PulseAudio Bluetooth module(s)"
 }
 
 restore_pulse_bluetooth_modules() {
+  if ((PULSE_BT_GUARD_ACTIVE == 0)) && [[ -f "${PULSE_GUARD_STATE}" ]]; then
+    load_pulse_bluetooth_guard
+  fi
   ((PULSE_BT_GUARD_ACTIVE == 1)) || return 0
   local failed=0 index module_name module_args
   for index in "${!PULSE_BT_MODULE_NAMES[@]}"; do
     ((PULSE_BT_MODULE_UNLOADED[index] == 1)) || continue
     module_name="${PULSE_BT_MODULE_NAMES[index]}"
     module_args="${PULSE_BT_MODULE_ARGS[index]}"
+    if "${PACTL_BIN}" list modules short 2>/dev/null |
+      awk -v wanted="${module_name}" '$2 == wanted { found = 1 } END { exit !found }'; then
+      PULSE_BT_MODULE_UNLOADED[index]=0
+      continue
+    fi
     if [[ -n "${module_args}" ]]; then
       if "${PACTL_BIN}" load-module "${module_name}" "${module_args}" >/dev/null; then
         PULSE_BT_MODULE_UNLOADED[index]=0
@@ -433,11 +559,15 @@ restore_pulse_bluetooth_modules() {
     return 1
   fi
   PULSE_BT_GUARD_ACTIVE=0
+  rm -f -- "${PULSE_GUARD_STATE}"
   ((${#PULSE_BT_MODULE_NAMES[@]} == 0)) || log 'PulseAudio Bluetooth modules restored'
 }
 
 begin_pulse_bluetooth_guard() {
   local use_guard=0 pulse_probe_rc
+  if [[ -f "${PULSE_GUARD_STATE}" ]]; then
+    restore_pulse_bluetooth_modules || return 1
+  fi
   case "${PULSEAUDIO_BLUETOOTH_GUARD,,}" in
     auto)
       if pulse_bluetooth_modules_present; then
@@ -532,8 +662,9 @@ restore_aura_a2dp() {
     return 0
   fi
 
-  if busctl call org.bluez "${device_path}" org.bluez.Device1 ConnectProfile \
-    s "${A2DP_SINK_UUID}" >/dev/null 2>&1; then
+  if timeout -k 1s "${BLUEZ_CONTROL_TIMEOUT}" \
+    busctl call org.bluez "${device_path}" org.bluez.Device1 ConnectProfile \
+      s "${A2DP_SINK_UUID}" >/dev/null 2>&1; then
     rm -f -- "${A2DP_MARKER}"
     log 'Aura A2DP profile restored'
   else
@@ -611,8 +742,12 @@ export_session_environment() {
   validate_frames_for_mtu \
     "${JBL_ENTER_FRAME}" "${JBL_START_FRAME}" "${JBL_STOP_FRAME}" "${JBL_EXIT_FRAME}"
   export BT_ADAPTER JBL_BT_MAC AURA_BT_MAC JBL_GATT_HANDLE JBL_GATT_MTU
-  export AURA_GATT_HANDLE AURA_GATT_PSM AURA_JOIN_DELAY GATTTOOL_BIN
+  export AURA_DEVICE_NAME AURA_TRANSPORT AURA_V4_PID
+  export AURA_GATT_HANDLE AURA_GATT_CCCD_HANDLE AURA_GATT_PSM
+  export AURA_JOIN_DELAY GATTTOOL_BIN
   export SESSION_CONNECT_TIMEOUT SESSION_AURA_CONNECT_WINDOW
+  export SESSION_AURA_LE_SCAN_WINDOW SESSION_AURA_LE_RETRIES
+  export SESSION_AURA_LE_RETRY_DELAY
   export SESSION_WRITE_TIMEOUT SESSION_AURA_ACK_TIMEOUT
   export JBL_ENTER_FRAME JBL_START_FRAME JBL_STOP_FRAME JBL_EXIT_FRAME
   export AURA_ON_FRAME AURA_OFF_FRAME
@@ -641,10 +776,210 @@ systemd_user_available() {
     systemctl --user show-environment >/dev/null 2>&1
 }
 
+persistent_session_unit_available() {
+  systemd_user_available || return 1
+  [[ "$(systemctl --user show "${SESSION_UNIT}" -p LoadState --value 2>/dev/null || true)" == 'loaded' ]] &&
+    [[ "$(systemctl --user show "${SESSION_UNIT}" -p Transient --value 2>/dev/null || true)" == 'no' ]]
+}
+
+systemd_quote() {
+  local value="$1"
+  if [[ "${value}" == *$'\n'* || "${value}" == *$'\r'* ]]; then
+    fail 'systemd paths may not contain newlines'
+    return 1
+  fi
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//%/%%}"
+  printf '"%s"' "${value}"
+}
+
+render_user_service() {
+  local installed_bin="$1" output_file="$2" line
+  [[ -f "${SERVICE_TEMPLATE}" ]] || {
+    fail "systemd template not found: ${SERVICE_TEMPLATE}"
+    return 1
+  }
+  : >"${output_file}"
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    case "${line}" in
+      '@CONFIG_ENVIRONMENT@')
+        printf 'Environment=%s\n' \
+          "$(systemd_quote "JBL_AURA_CONFIG=${config_file}")" >>"${output_file}"
+        ;;
+      '@EXEC_START_PRE@')
+        printf 'ExecStartPre=%s __service-pre\n' \
+          "$(systemd_quote "${installed_bin}")" >>"${output_file}"
+        ;;
+      '@EXEC_START@')
+        printf 'ExecStart=%s __session-daemon\n' \
+          "$(systemd_quote "${installed_bin}")" >>"${output_file}"
+        ;;
+      '@EXEC_START_POST@')
+        printf 'ExecStartPost=%s __service-post\n' \
+          "$(systemd_quote "${installed_bin}")" >>"${output_file}"
+        ;;
+      '@EXEC_STOP_POST@')
+        printf 'ExecStopPost=%s __service-cleanup\n' \
+          "$(systemd_quote "${installed_bin}")" >>"${output_file}"
+        ;;
+      *) printf '%s\n' "${line}" >>"${output_file}" ;;
+    esac
+  done <"${SERVICE_TEMPLATE}"
+}
+
+wait_for_managed_session() {
+  local response state attempt
+  for ((attempt = 0; attempt < SESSION_START_TIMEOUT * 2; attempt++)); do
+    if response="$(session_client status 2 2>/dev/null)"; then
+      state="$(jq -r '.state // empty' <<<"${response}")"
+      if [[ "${state}" == 'ready' || "${state}" == 'linked' || "${state}" == 'degraded' ]]; then
+        log "persistent control session ready (state=${state})"
+        return 0
+      fi
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
+install_user_service() {
+  validate_config
+  require_session_manager
+  require_command install
+  require_command jq
+  require_command ln
+  require_command mktemp
+  require_command readlink
+  require_command systemctl
+  systemd_user_available || {
+    fail 'a working user systemd manager is required for install-service'
+    return 1
+  }
+  [[ -f "${config_file}" ]] || {
+    fail "private configuration not found: ${config_file}"
+    return 1
+  }
+
+  # Retire a transient or older installed process before replacing its files.
+  # shutdown_session sends the verified STOP sequence when the state is linked.
+  if session_available; then
+    shutdown_session
+  fi
+  # shutdown_session normally exits with the CLI process and lets fd 9 close.
+  # install-service continues in the same process, so release it explicitly
+  # before systemd runs ExecStartPre and acquires the same operation lock.
+  release_operation_lock
+  systemctl --user stop "${SESSION_UNIT}" >/dev/null 2>&1 || true
+
+  local installed_bin installed_manager installed_template temporary_unit
+  installed_bin="${USER_INSTALL_ROOT}/bin/jbl-aura-link"
+  installed_manager="${USER_INSTALL_ROOT}/lib/jbl_aura_session.py"
+  installed_template="${USER_INSTALL_ROOT}/systemd/jbl-aura-link-session.service.in"
+
+  install -Dm755 -- "${script_dir}/jbl-aura-link" "${installed_bin}"
+  install -Dm755 -- "${JBL_AURA_SESSION_MANAGER}" "${installed_manager}"
+  install -Dm644 -- "${SERVICE_TEMPLATE}" "${installed_template}"
+  install -d -m755 -- "$(dirname -- "${USER_LAUNCHER}")" "$(dirname -- "${USER_UNIT_FILE}")"
+
+  if [[ -L "${USER_LAUNCHER}" ]]; then
+    if [[ "$(readlink -f -- "${USER_LAUNCHER}")" != "$(readlink -f -- "${installed_bin}")" ]]; then
+      fail "refusing to replace an unrelated launcher: ${USER_LAUNCHER}"
+      return 1
+    fi
+  elif [[ -e "${USER_LAUNCHER}" ]]; then
+    fail "refusing to replace an unrelated launcher: ${USER_LAUNCHER}"
+    return 1
+  else
+    ln -s -- "${installed_bin}" "${USER_LAUNCHER}"
+  fi
+
+  umask 077
+  temporary_unit="$(mktemp "$(dirname -- "${USER_UNIT_FILE}")/.${SESSION_UNIT}.XXXXXX")"
+  if ! render_user_service "${installed_bin}" "${temporary_unit}"; then
+    rm -f -- "${temporary_unit}"
+    return 1
+  fi
+  install -m644 -- "${temporary_unit}" "${USER_UNIT_FILE}"
+  rm -f -- "${temporary_unit}"
+
+  systemctl --user daemon-reload
+  systemctl --user enable "${SESSION_UNIT}" >/dev/null
+  systemctl --user restart "${SESSION_UNIT}"
+
+  if command -v loginctl >/dev/null 2>&1; then
+    local linger
+    linger="$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null || true)"
+    if [[ "${linger}" != 'yes' ]]; then
+      log 'warning: user lingering is disabled; the service will start at login, not early boot'
+      log "enable true boot startup with: loginctl enable-linger $(id -un)"
+    fi
+  fi
+
+  if ! wait_for_managed_session; then
+    systemctl --user --no-pager --full status "${SESSION_UNIT}" >&2 || true
+    fail 'autostart service was enabled but did not become ready before the timeout'
+    return 1
+  fi
+  log "autostart service installed: ${SESSION_UNIT}"
+  log "simple control command installed: ${USER_LAUNCHER} {start|stop|status}"
+}
+
+show_autostart_status() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  local enabled active
+  enabled="$(systemctl --user is-enabled "${SESSION_UNIT}" 2>/dev/null || true)"
+  active="$(systemctl --user is-active "${SESSION_UNIT}" 2>/dev/null || true)"
+  if [[ "${enabled}" != 'not-found' || -f "${USER_UNIT_FILE}" ]]; then
+    log "autostart service: enabled=${enabled:-unknown}; active=${active:-unknown}"
+  fi
+}
+
+service_preflight() {
+  validate_config
+  require_command busctl
+  require_command jq
+  require_command mktemp
+  require_command timeout
+  require_command xxd
+  acquire_lock
+  trap 'restore_pulse_bluetooth_modules || true; restore_aura_a2dp || true' EXIT
+  disconnect_aura_a2dp
+  begin_pulse_bluetooth_guard
+  if is_true "${BLUEZ_FULL_DISCONNECT_BEFORE_SESSION}"; then
+    release_aura_bluez_session
+  else
+    log 'preserving the existing BlueZ ACL for autostart control'
+  fi
+  trap - EXIT
+}
+
+service_post_start() {
+  require_session_manager
+  require_command jq
+  if ! wait_for_managed_session; then
+    restore_pulse_bluetooth_modules || true
+    fail 'managed session did not become ready during systemd startup'
+    return 1
+  fi
+  restore_pulse_bluetooth_modules
+}
+
+service_cleanup() {
+  restore_pulse_bluetooth_modules || true
+  case "${SERVICE_RESULT:-success}" in
+    success) restore_aura_a2dp || true ;;
+    *) log "skipping A2DP restoration during automatic failure recovery (${SERVICE_RESULT})" ;;
+  esac
+}
+
 session_daemon_foreground() {
   validate_config
   require_gatttool
   require_session_manager
+  case "${AURA_TRANSPORT,,}" in
+    auto | le) require_dbus_fast ;;
+  esac
   prepare_session_paths
   export_session_environment
   exec >>"${SESSION_LOG}" 2>&1
@@ -659,8 +994,8 @@ launch_session_daemon() {
     return 0
   fi
 
-  local daemon_pid='' response state attempt launch_mode="${SESSION_LAUNCH_MODE,,}"
-  : >"${SESSION_LOG}"
+  local daemon_pid='' response state attempt persistent_unit=0
+  local launch_mode="${SESSION_LAUNCH_MODE,,}"
   if [[ "${launch_mode}" == 'auto' ]]; then
     if systemd_user_available; then
       launch_mode='systemd'
@@ -673,14 +1008,22 @@ launch_session_daemon() {
       fail 'SESSION_LAUNCH_MODE=systemd but the user systemd manager is unavailable'
       return 1
     }
-    systemctl --user stop "${SESSION_UNIT}" >/dev/null 2>&1 || true
-    systemctl --user reset-failed "${SESSION_UNIT}" >/dev/null 2>&1 || true
-    systemd-run --user --quiet --collect --unit="${SESSION_UNIT%.service}" \
-      --property=Type=exec --property=KillMode=mixed \
-      --property=TimeoutStopSec=60s \
-      --setenv="JBL_AURA_CONFIG=${config_file}" \
-      -- "${script_dir}/jbl-aura-link" __session-daemon
+    if persistent_session_unit_available; then
+      persistent_unit=1
+      systemctl --user start "${SESSION_UNIT}"
+    else
+      : >"${SESSION_LOG}"
+      systemctl --user stop "${SESSION_UNIT}" >/dev/null 2>&1 || true
+      systemctl --user reset-failed "${SESSION_UNIT}" >/dev/null 2>&1 || true
+      systemd-run --user --quiet --collect --unit="${SESSION_UNIT%.service}" \
+        --property=Type=exec --property=KillMode=mixed \
+        --property=TimeoutStopSec=60s \
+        --setenv="JBL_AURA_CONFIG=${config_file}" \
+        --setenv="AURA_TRANSPORT_OVERRIDE=${AURA_TRANSPORT}" \
+        -- "${script_dir}/jbl-aura-link" __session-daemon
+    fi
   else
+    : >"${SESSION_LOG}"
     nohup "${PYTHON_BIN}" "${JBL_AURA_SESSION_MANAGER}" daemon \
       --socket "${SESSION_SOCKET}" --state "${SESSION_STATE}" --lock "${SESSION_LOCK}" \
       </dev/null >>"${SESSION_LOG}" 2>&1 9>&- &
@@ -697,7 +1040,8 @@ launch_session_daemon() {
     fi
     if [[ "${launch_mode}" == 'systemd' ]]; then
       state="$(systemctl --user show "${SESSION_UNIT}" -p ActiveState --value 2>/dev/null || true)"
-      if [[ "${state}" == 'failed' || "${state}" == 'inactive' ]]; then
+      if ((persistent_unit == 0)) &&
+        [[ "${state}" == 'failed' || "${state}" == 'inactive' ]]; then
         break
       fi
     elif ! kill -0 "${daemon_pid}" 2>/dev/null; then
@@ -706,9 +1050,9 @@ launch_session_daemon() {
     sleep 0.5
   done
 
-  if [[ "${launch_mode}" == 'systemd' ]]; then
+  if [[ "${launch_mode}" == 'systemd' ]] && ((persistent_unit == 0)); then
     systemctl --user stop "${SESSION_UNIT}" >/dev/null 2>&1 || true
-  else
+  elif [[ "${launch_mode}" != 'systemd' ]]; then
     kill -TERM "${daemon_pid}" 2>/dev/null || true
     wait "${daemon_pid}" 2>/dev/null || true
   fi
@@ -720,6 +1064,9 @@ start_link() {
   validate_config
   require_gatttool
   require_session_manager
+  case "${AURA_TRANSPORT,,}" in
+    auto | le) require_dbus_fast ;;
+  esac
   require_command bluetoothctl
   require_command busctl
   require_command jq
@@ -729,15 +1076,24 @@ start_link() {
 
   local response
   if ! session_available; then
-    trap 'restore_pulse_bluetooth_modules || true; session_client shutdown 5 >/dev/null 2>&1 || true; restore_aura_a2dp || true' EXIT
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-    disconnect_aura_a2dp
-    begin_pulse_bluetooth_guard
-    release_aura_bluez_session
-    launch_session_daemon
-    restore_pulse_bluetooth_modules
-    trap - EXIT INT TERM
+    if persistent_session_unit_available; then
+      # The installed unit owns preflight, rollback and PulseAudio restoration.
+      launch_session_daemon
+    else
+      trap 'restore_pulse_bluetooth_modules || true; session_client shutdown 5 >/dev/null 2>&1 || true; restore_aura_a2dp || true' EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+      disconnect_aura_a2dp
+      begin_pulse_bluetooth_guard
+      if is_true "${BLUEZ_FULL_DISCONNECT_BEFORE_SESSION}"; then
+        release_aura_bluez_session
+      else
+        log 'preserving the existing BlueZ ACL for managed control'
+      fi
+      launch_session_daemon
+      restore_pulse_bluetooth_modules
+      trap - EXIT INT TERM
+    fi
   fi
 
   if ! response="$(session_client start "${SESSION_START_TIMEOUT}")"; then
@@ -769,10 +1125,16 @@ stop_link() {
 shutdown_session() {
   validate_config
   require_session_manager
+  require_command busctl
   require_command jq
+  require_command timeout
   acquire_lock
   local response attempt
   if session_available; then
+    if ! response="$(session_client stop "${SESSION_START_TIMEOUT}")"; then
+      fail "$(session_error_text "${response}")"
+      return 1
+    fi
     if ! response="$(session_client shutdown "${SESSION_START_TIMEOUT}")"; then
       fail "$(session_error_text "${response}")"
       return 1
@@ -786,14 +1148,24 @@ shutdown_session() {
       return 1
     }
   fi
-  restore_aura_a2dp
+  # BlueZ can report br-connection-busy when BR/EDR restoration is attempted
+  # while the raw LE vendor bearer is still open.  Release the control bearers
+  # first.  A speaker may still reject classic A2DP outside its connectable
+  # window; that optional handoff must not resurrect or retain the supervisor.
+  if ! restore_aura_a2dp; then
+    log 'persistent control sessions released; Aura A2DP restoration remains pending'
+    return 0
+  fi
   log 'persistent control sessions released'
 }
 
 show_managed_status() {
   local response
   if response="$(session_client status 2 2>/dev/null)"; then
-    log "managed session state: $(jq -r '.state // "unknown"' <<<"${response}")"
+    local managed_state aura_transport
+    managed_state="$(jq -r '.state // "unknown"' <<<"${response}")"
+    aura_transport="$(jq -r '.aura_transport // "unknown"' <<<"${response}")"
+    log "managed session state: ${managed_state}; Aura transport: ${aura_transport}"
     log 'Managed state reflects local control acknowledgements, not BASS/ISO proof.'
     return 0
   fi
@@ -845,6 +1217,7 @@ show_status() {
   acquire_lock
   if require_session_manager >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 &&
     show_managed_status; then
+    show_autostart_status
     return 0
   fi
   require_command bluetoothctl
@@ -857,6 +1230,7 @@ show_status() {
   log "JBL cached DFFD enum: ${role}"
   log 'This app-derived private enum is diagnostic only; cache freshness and on-air LE Audio direction are unknown.'
   log 'Association state: UNKNOWN unless confirmed acoustically.'
+  show_autostart_status
   trap - EXIT INT TERM
 }
 
@@ -880,6 +1254,15 @@ doctor() {
   else
     failures=$((failures + 1))
   fi
+  case "${AURA_TRANSPORT,,}" in
+    auto | le)
+      if require_dbus_fast; then
+        log 'dependency dbus-fast: OK'
+      else
+        failures=$((failures + 1))
+      fi
+      ;;
+  esac
   if ! validate_config; then
     failures=$((failures + 1))
   fi
@@ -959,6 +1342,7 @@ Usage: jbl-aura-link <command>
 
 Commands:
   doctor          Check dependencies, configuration, adapter and pairing
+  install-service Install, enable and start the per-user boot service
   start           Link through persistent JBL and Aura control sessions
   stop            Unlink while keeping both control sessions ready
   shutdown        Unlink, close the persistent sessions, and restore A2DP
@@ -975,12 +1359,16 @@ EOF
 main() {
   case "${1:-}" in
     doctor) doctor ;;
+    install-service) install_user_service ;;
     start) start_link ;;
     stop) stop_link ;;
     shutdown) shutdown_session ;;
     status) show_status ;;
     recover-stop) recover_stop_link ;;
     __session-daemon) session_daemon_foreground ;;
+    __service-pre) service_preflight ;;
+    __service-post) service_post_start ;;
+    __service-cleanup) service_cleanup ;;
     frame) print_frame "${2:-start}" ;;
     version | --version) printf '%s\n' "${VERSION}" ;;
     -h | --help | help) usage ;;

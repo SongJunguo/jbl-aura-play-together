@@ -42,6 +42,15 @@ assert_fails() {
   printf 'PASS %s\n' "${label}"
 }
 
+transport_override="$(
+  AURA_TRANSPORT_OVERRIDE=le \
+    JBL_AURA_CONFIG="${repo_dir}/config/devices.env.example" \
+    bash -c 'source "$1"; printf "%s" "${AURA_TRANSPORT}"' \
+      _ "${repo_dir}/bin/jbl-aura-link"
+)"
+assert_equal 'le' "${transport_override}" \
+  'one-shot transport override wins over file configuration'
+
 assert_equal '504c011f0000' "$(build_pl_frame 7937)" 'ENTER frame'
 assert_equal '504c021f0000' "$(build_pl_frame 7938)" 'EXIT frame'
 assert_equal '504c151f0c007b22616374696f6e223a327d' \
@@ -100,6 +109,10 @@ assert_equal 'sentinel' "$(tr -d '\n' <"${lock_runtime}/jbl-aura-link/operation.
   'lock open does not truncate an existing file'
 assert_equal '700' "$(stat -c '%a' "${lock_runtime}/jbl-aura-link")" \
   'lock directory is private'
+acquire_lock
+release_operation_lock
+(acquire_lock)
+printf 'PASS operation lock can be reacquired after explicit release\n'
 
 symlink_runtime="${test_tmp}/symlink-runtime"
 mkdir -p "${symlink_runtime}/target"
@@ -220,6 +233,18 @@ assert_equal 'auto_switch=2' "${PULSE_BT_MODULE_ARGS[0]}" \
   'PulseAudio policy args captured'
 assert_equal 'headset="native hfp"' "${PULSE_BT_MODULE_ARGS[1]}" \
   'PulseAudio discover args captured'
+[[ -f "${PULSE_GUARD_STATE}" ]] || {
+  printf 'FAIL PulseAudio guard did not persist crash-recovery state\n' >&2
+  exit 1
+}
+printf 'PASS PulseAudio guard persists crash-recovery state\n'
+# Simulate ExecStartPre exiting before ExecStartPost: the next process has only
+# the private state file, not the original Bash arrays.
+PULSE_BT_GUARD_ACTIVE=0
+PULSE_BT_MODULE_IDS=()
+PULSE_BT_MODULE_NAMES=()
+PULSE_BT_MODULE_ARGS=()
+PULSE_BT_MODULE_UNLOADED=()
 restore_pulse_bluetooth_modules >/dev/null
 assert_equal '2' "${fake_pactl_loads}" 'PulseAudio guard restore count'
 assert_equal '1' "${fake_policy_active}" 'PulseAudio policy restored state'
@@ -228,6 +253,11 @@ assert_equal 'auto_switch=2' "${fake_policy_loaded_args}" \
   'PulseAudio policy args restored'
 assert_equal 'headset="native hfp"' "${fake_discover_loaded_args}" \
   'PulseAudio discover args restored'
+[[ ! -e "${PULSE_GUARD_STATE}" ]] || {
+  printf 'FAIL PulseAudio guard state survived successful restore\n' >&2
+  exit 1
+}
+printf 'PASS PulseAudio persisted state clears after restore\n'
 
 reset_fake_pactl
 fake_fail_unload_id=12
@@ -326,6 +356,70 @@ unset -f pactl
 PACTL_BIN="${saved_pactl_bin}"
 PULSEAUDIO_BLUETOOTH_GUARD="${saved_pulse_guard}"
 
+shutdown_event_log="${test_tmp}/shutdown-events"
+set +e
+shutdown_pending_output="$(
+  (
+    acquire_lock() { :; }
+    session_available() { return 0; }
+    session_client() {
+      printf '%s\n' "$1" >>"${shutdown_event_log}"
+      case "$1" in
+        stop) printf '{"ok":true,"state":"ready"}\n' ;;
+        shutdown) printf '{"ok":true,"state":"shutting-down"}\n' ;;
+        *) return 1 ;;
+      esac
+    }
+    restore_aura_a2dp() {
+      printf 'restore-a2dp\n' >>"${shutdown_event_log}"
+      return 1
+    }
+    shutdown_session
+  ) 2>&1
+)"
+shutdown_pending_rc=$?
+set -e
+assert_equal '0' "${shutdown_pending_rc}" \
+  'shutdown succeeds when only optional A2DP restoration is pending'
+assert_equal $'stop\nshutdown\nrestore-a2dp' "$(cat "${shutdown_event_log}")" \
+  'shutdown releases control before attempting A2DP restoration'
+grep -Fq 'A2DP restoration remains pending' <<<"${shutdown_pending_output}" || {
+  printf 'FAIL shutdown did not report pending A2DP restoration\n' >&2
+  exit 1
+}
+printf 'PASS shutdown reports pending optional A2DP restoration\n'
+
+failure_cleanup_output="$(
+  (
+    restore_pulse_bluetooth_modules() { printf 'RESTORE_PULSE\n'; }
+    restore_aura_a2dp() { printf 'RESTORE_A2DP\n'; }
+    SERVICE_RESULT=exit-code
+    service_cleanup
+  )
+)"
+grep -Fq 'RESTORE_PULSE' <<<"${failure_cleanup_output}" || {
+  printf 'FAIL service failure cleanup did not restore PulseAudio\n' >&2
+  exit 1
+}
+if grep -Fq 'RESTORE_A2DP' <<<"${failure_cleanup_output}"; then
+  printf 'FAIL automatic failure recovery restored competing A2DP\n' >&2
+  exit 1
+fi
+printf 'PASS automatic failure recovery skips competing A2DP restoration\n'
+success_cleanup_output="$(
+  (
+    restore_pulse_bluetooth_modules() { :; }
+    restore_aura_a2dp() { printf 'RESTORE_A2DP\n'; }
+    SERVICE_RESULT=success
+    service_cleanup
+  )
+)"
+grep -Fq 'RESTORE_A2DP' <<<"${success_cleanup_output}" || {
+  printf 'FAIL graceful service cleanup did not restore prior A2DP\n' >&2
+  exit 1
+}
+printf 'PASS graceful service cleanup restores prior A2DP\n'
+
 (
   acquire_lock() { :; }
   disconnect_aura_a2dp() { :; }
@@ -334,6 +428,7 @@ PULSEAUDIO_BLUETOOTH_GUARD="${saved_pulse_guard}"
   release_aura_bluez_session() { :; }
   restore_aura_a2dp() { :; }
   GATTTOOL_BIN="${test_dir}/fixtures/fake-gatttool-session"
+  AURA_TRANSPORT=bredr
   AURA_JOIN_DELAY=0
   SESSION_START_TIMEOUT=5
   SESSION_CONNECT_TIMEOUT=2
@@ -367,6 +462,60 @@ grep -Fq 'no managed control session' <<<"${managed_stop_output}" || {
   exit 1
 }
 printf 'PASS managed stop explains missing held session\n'
+
+service_root="${test_tmp}/service-install"
+service_log="${service_root}/systemctl.log"
+mkdir -p "${service_root}"
+JBL_AURA_INSTALL_ROOT="${service_root}/lib/jbl-aura-link" \
+JBL_AURA_USER_BIN_DIR="${service_root}/bin" \
+JBL_AURA_USER_UNIT_DIR="${service_root}/units" \
+JBL_AURA_CONFIG="${repo_dir}/config/devices.env.example" \
+SERVICE_TEST_LOG="${service_log}" \
+bash -c '
+  set -euo pipefail
+  source "$1"
+  systemd_user_available() { return 0; }
+  session_available() { return 1; }
+  wait_for_managed_session() { return 0; }
+  systemctl() { printf "%s\n" "$*" >>"${SERVICE_TEST_LOG}"; }
+  loginctl() { printf "yes\n"; }
+  install_user_service >/dev/null
+' _ "${repo_dir}/bin/jbl-aura-link"
+[[ -L "${service_root}/bin/jbl-aura-link" ]] || {
+  printf 'FAIL install-service did not create the simple launcher\n' >&2
+  exit 1
+}
+printf 'PASS install-service creates the simple launcher\n'
+resolved_manager="$(
+  JBL_AURA_CONFIG="${repo_dir}/config/devices.env.example" \
+    bash -c 'source "$1"; printf "%s" "${JBL_AURA_SESSION_MANAGER}"' \
+      _ "${service_root}/bin/jbl-aura-link"
+)"
+resolved_manager="$(readlink -m -- "${resolved_manager}")"
+assert_equal "${service_root}/lib/jbl-aura-link/lib/jbl_aura_session.py" \
+  "${resolved_manager}" 'installed launcher resolves its real manager path'
+service_unit="${service_root}/units/jbl-aura-link-session.service"
+grep -Fq 'Restart=on-failure' "${service_unit}" || {
+  printf 'FAIL installed unit does not retry failed cold startup\n' >&2
+  exit 1
+}
+if ! grep -Fq 'ExecStartPre=' "${service_unit}" ||
+  ! grep -Fq 'ExecStartPost=' "${service_unit}" ||
+  ! grep -Fq 'ExecStopPost=' "${service_unit}"; then
+    printf 'FAIL installed unit lacks guarded lifecycle hooks\n' >&2
+    exit 1
+fi
+if rg -n '@[A-Z_]+@' "${service_unit}" >/dev/null; then
+  printf 'FAIL installed unit retained a template token\n' >&2
+  exit 1
+fi
+printf 'PASS install-service renders guarded boot unit\n'
+if ! grep -Fq -- '--user enable jbl-aura-link-session.service' "${service_log}" ||
+  ! grep -Fq -- '--user restart jbl-aura-link-session.service' "${service_log}"; then
+    printf 'FAIL install-service did not enable and restart the unit\n' >&2
+    exit 1
+fi
+printf 'PASS install-service enables and starts the boot unit\n'
 
 saved_jbl_mac="${JBL_BT_MAC}"
 JBL_BT_MAC=''

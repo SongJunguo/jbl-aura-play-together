@@ -33,7 +33,8 @@ failed=0
 
 mac_hits="$(scan '([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}' |
   sed -e 's/02:00:00:00:00:01/<placeholder>/g' \
-    -e 's/02:00:00:00:00:02/<placeholder>/g' |
+    -e 's/02:00:00:00:00:02/<placeholder>/g' \
+    -e 's/02:00:00:00:00:03/<placeholder>/g' |
   rg -e '([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}' || true)"
 if [[ -n "${mac_hits}" ]]; then
   printf 'privacy check: non-placeholder Bluetooth address found:\n%s\n' "${mac_hits}" >&2

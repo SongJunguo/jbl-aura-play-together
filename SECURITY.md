@@ -28,11 +28,13 @@ can reveal them on the host. Do not paste `ps`, `systemctl status`, a raw sessio
 log, or the private config into a public issue. The local permission boundary is
 not a promise that operating-system administrators cannot inspect the process.
 
-The transient user-systemd unit uses main-process-first termination so the
-supervisor can attempt the receiver-first unlink sequence before its transport
-children are reaped. This reduces graceful-stop risk; it cannot make power loss,
-speaker power-off, unconditional process killing, or a later closed Bluetooth
-connectable window transactional.
+The transient fallback and installed per-user systemd unit use
+main-process-first termination so the supervisor can attempt the receiver-first
+unlink sequence before its transport children are reaped. The installed unit
+also persists only the PulseAudio module names and hex-encoded arguments needed
+for crash-safe restoration in a mode-0600 state file. It does not store a device
+address there. These measures reduce graceful-stop risk; they cannot make power
+loss, speaker power-off, or unconditional process killing transactional.
 
 Never commit:
 

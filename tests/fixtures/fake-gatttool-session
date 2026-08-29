@@ -3,8 +3,13 @@ set -euo pipefail
 
 role='jbl'
 connect_attempts=0
+transport='public'
 for argument in "$@"; do
   [[ "${argument}" == '-p' ]] && role='aura'
+  [[ "${argument}" == 'random' ]] && {
+    role='aura'
+    transport='le'
+  }
 done
 
 printf '[fake][%s]> ' "${role}"
@@ -12,11 +17,20 @@ while IFS= read -r command; do
   case "${command}" in
     connect)
       connect_attempts=$((connect_attempts + 1))
-      if [[ "${role}" == 'aura' &&
+      if [[ "${role}" == 'aura' && "${transport}" != 'le' &&
+        "${FAKE_SESSION_CLASSIC_ALWAYS_FAIL:-0}" == '1' ]]; then
+        printf '\nError: connect failed: Host is down\n[fake][%s]> ' "${role}"
+      elif [[ "${role}" == 'aura' &&
         "${connect_attempts}" -le "${FAKE_SESSION_CONNECT_FAILS:-0}" ]]; then
         printf '\nError: connect failed: Host is down\n[fake][%s]> ' "${role}"
       else
         printf '\nConnection successful\n[fake][%s]> ' "${role}"
+        if [[ "${FAKE_SESSION_DISCONNECT_AFTER_CONNECT:-}" == "${role}" ]]; then
+          (
+            sleep "${FAKE_SESSION_DISCONNECT_DELAY:-0.8}"
+            printf '\nDisconnected\n[fake][%s]> ' "${role}"
+          ) &
+        fi
       fi
       ;;
     mtu\ *)

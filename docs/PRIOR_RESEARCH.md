@@ -1,6 +1,6 @@
 # Prior open-source research
 
-Search date: 2026-08-28. GitHub code/repository/issue searches found no public
+Search refreshed: 2026-08-29. GitHub code/repository/issue searches found no public
 implementation containing the exact `setAuracastBroadcast`, `OneAuracastRole`,
 Aura Studio 5 Play Together, or successful `0x3c` sequence for this device pair.
 Search indexes are not complete, so this is not a claim that no private or
@@ -26,7 +26,7 @@ the search, which is another reason the negative finding is stated narrowly.
 
 This is high-quality, transparent work on two PartyBox 710 speakers. It combines
 Android HCI captures, official-app decompilation, and hardware replay. It
-documents the same AA/TLV family, `aa00021300` acknowledgement semantics, DFFD
+documents the same AA/TLV family, `aa00021300` acknowledgement semantics, FDDF
 discovery, and legacy TWS tag `0x39`.
 
 It does **not** study Authentics 300, Aura Studio 5, OneOS PL `7957`, token
@@ -39,13 +39,37 @@ method and part of the transport family, not our final mechanism.
 - inspected commit `027ee65fb6da362a88023cbb043848c4160c313d`
 
 This project has unusually careful reverse-engineering notes with confirmed,
-tentative, and open findings separated. Its PartyBox 520 work maps parts of DFFD
-and reports a second rotating LE identity that advertises `0x1853` separately
-from the DFFD identity. Bluetooth SIG Assigned Numbers define `0x1853` as Common
-Audio Service; Public Broadcast Announcement is `0x1856`. The project explicitly
-leaves Auracast group commands as an open question.
+tentative, and open findings separated. Its PartyBox 520 work independently
+confirms two findings that are directly relevant to Aura cold reconnect:
 
-That separate-identity observation shows DFFD need not be the only LE identity,
+- the connectable control identity uses a rotating random LE address, which
+  must be taken from a live scan rather than persisted;
+- Harman `0xFDDF` Service Data bytes 11 through 16 carry the stable BR/EDR
+  address. Its implementation consumes typed BlueZ `Device1.ServiceData`
+  events, and its scanner retains the live `BLEDevice` for the subsequent
+  connection.
+
+Those offsets exactly match the independently captured Aura Studio 5 payload:
+PID `212d` is encoded little-endian at bytes 0-1 and the configured stable
+identity is present at bytes 11-16. A typed BlueZ D-Bus probe on the tested
+Ubuntu host resolved a fresh Aura RPA from this tuple on 2026-08-29 without a
+button press or command write. A later phone-disconnected hardware pass used the
+same matcher for the complete CCCD-enable and AA control path; two requested
+no-button cold rounds reached the expected managed states, and one linked pass
+was confirmed audible on both speakers. One intervening scan saw no FDDF and
+failed before writing, so the upstream live-scan rule remains operationally
+important.
+
+The upstream document calls `0xFDDF` unregistered; that classification is
+incorrect. Bluetooth SIG Assigned Numbers formally assigns `0xFDDF` to Harman
+International. The *payload layout* remains vendor-defined and undocumented.
+
+The same project reports a second rotating LE identity that advertises `0x1853`
+separately from the FDDF identity. Bluetooth SIG Assigned Numbers define
+`0x1853` as Common Audio Service; Public Broadcast Announcement is `0x1856`.
+The project explicitly leaves Auracast group commands as an open question.
+
+That separate-identity observation shows FDDF need not be the only LE identity,
 but it does not prove that the second identity is a broadcast source. It also
 does not explain our cached enum value or the inconclusive Aura BASS read.
 
@@ -66,6 +90,39 @@ This is strong evidence for a standard PBP/BIS audio path plus a vendor
 discovery/acceptance gate, rather than a wholly proprietary audio transport. It
 was not tested on Authentics 300 or Aura Studio 5, so it remains a related-model
 finding.
+
+### BlueZ and Bleak rotating-address guidance
+
+- <https://github.com/bluez/bluez/blob/5.64/doc/adapter-api.txt>
+- <https://github.com/hbldh/bleak/discussions/1246>
+- <https://github.com/bluez/bluez/issues/2356>
+
+BlueZ 5.64 explicitly states that once a client calls `SetDiscoveryFilter`,
+matching device objects are created even for non-discoverable or
+non-connectable advertisements. Bleak's maintainer recommends scanning,
+matching advertisement content, and passing the resulting live `BLEDevice` to
+the client instead of reconnecting by a persisted RPA. A separate 2026 BlueZ
+issue demonstrates the same operational boundary: active-scan-then-connect
+works for an RPA peer when background connect does not, and the issue remains
+present in newer BlueZ versions. Upgrading BlueZ alone is therefore not the
+chosen fix.
+
+The local implementation follows the lowest-risk subset of that guidance: it
+uses `dbus-fast` to set an LE discovery filter, listens to typed ObjectManager
+and Properties signals, validates FDDF PID plus stable identity, then hands the
+fresh RPA immediately to the already hardware-verified `gatttool` session. It
+does not parse a `bluetoothctl` PTY.
+
+### Harman multi-speaker patent
+
+- <https://patents.google.com/patent/WO2025081468A1/en>
+
+Harman's patent describes a player or app instructing one audio device to act
+as primary and another as secondary; the primary then relays audio and settings
+to the other devices using Auracast. This closely matches the observed control
+shape of JBL `7957` plus Aura AA token `0x3c`. It is architecture-level
+corroboration, not a byte-level specification or proof that the tested firmware
+implements every patent embodiment.
 
 ### OpenLEAudio
 
@@ -141,8 +198,10 @@ JBL/Harman bridge for this pair.
 The public literature supports four cautious conclusions:
 
 1. AA/TLV is a real, independently reproduced JBL/Harman control family.
-2. DFFD is a vendor control/discovery advertisement and may coexist with a
-   separate Common Audio Service identity; the inspected source does not prove
+2. Harman's FDDF member UUID carries a proprietary discovery payload and may
+   coexist with a separate Common Audio Service identity. Authentics DFFD is a
+   distinct app-recognized advertisement family; the names must not be treated
+   as interchangeable byte-order spellings. The inspected source does not prove
    that identity also carries a Public Broadcast Announcement.
 3. JBL receiver filtering via Harman manufacturer data is publicly reproduced,
    but not yet verified for this exact pair.

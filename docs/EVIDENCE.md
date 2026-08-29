@@ -77,10 +77,9 @@ Bluetooth modules were restored while the control sessions remained usable.
 One immediate `shutdown` followed by a fresh `start` rebuilt both sessions and
 linked without another press. A later repetition after the Aura's classic
 connectable window had closed failed at the initial Aura connection with
-`Host is down`, before any role command was sent. A scan at that point found no
-separate named Aura or PID-matching V4/FDDf LE advertisement to use as an
-automatic fallback. Cold rebuild is therefore timing/state-dependent and is
-not a verified unattended capability.
+`Host is down`, before any role command was sent. That early scan used the
+ordinary BlueZ surface and incorrectly closed the investigation: later HCI and
+typed D-Bus work found the rotating FDDF control identity described below.
 
 No music was played during this automated lifecycle pass. It proves repeatable
 delivery and the held-session fix on this host, not a new audible result, BASS
@@ -94,6 +93,56 @@ connectability interval established the final persistent session. The resulting
 user-systemd unit reported `linked`, `KillMode=mixed`, both PulseAudio Bluetooth
 modules present, approximately 11 MiB resident memory, and a passing `doctor`.
 The session was intentionally left running; no final shutdown was performed.
+
+## Rotating-LE discovery evidence
+
+On 2026-08-29, a phone HCI capture showed a connectable random Aura identity
+with Harman `0xFDDF` Service Data, PID `212d`, the stable BR/EDR address at
+payload bytes 11-16, the Excelpoint control service, and the same control
+handles as the working BR/EDR database. Independent PartyBox 520 research
+documents the same FDDF identity offset and advises connecting from the live
+scan result rather than persisting an RPA.
+
+The experimental resolver was rewritten to use BlueZ D-Bus directly. It calls
+`SetDiscoveryFilter` with LE transport, duplicate reporting, and an empty
+pattern; consumes typed ObjectManager and Properties signals; and accepts a
+candidate only when FDDF, PID, and embedded stable identity all match. A
+read-only hardware probe resolved the Aura from five fresh advertisement
+events, with one FDDF payload and one identity match. No address was logged.
+
+A first forced-LE START trial then failed safely before any role write. Android
+state showed that the phone had automatically reconnected to Aura A2DP after
+the read-only probe. While that competing link was present, two typed scans and
+one interactive BlueZ scan observed other advertisements but no Aura FDDF; the
+supervisor reported failure and restored both PulseAudio modules. This proves
+the resolver is not willing to substitute a stale cache entry.
+
+The phone was then disconnected through Android's system Bluetooth UI. Android
+state showed the Aura A2DP profile disconnected and no active Harman GATT client.
+Without an App action or speaker-button press, a 60-second read-only resolver
+request matched the Aura after 10.7 seconds (`21` advertisement events, one
+FDDF payload, one identity match). The following managed cold start reached
+`linked` with `aura_transport=le`. A source was played only through the JBL at
+15% volume, and the listener selected the explicit result "both speakers are
+audible." Playback was then stopped.
+
+Per the requested bounded acceptance gate, two complete no-button cold-control
+rounds were obtained and testing stopped. The successful rounds took 17 and 15
+seconds and each ended `ready` after a verified STOP. They were not consecutive:
+one intervening 30-second attempt saw 49 advertisement events but zero FDDF,
+sent no role command, restored both PulseAudio modules, and exited failed. A
+later passive scan matched one FDDF identity after 10.7 seconds (`22` events),
+and the second cold round then passed. This is evidence for unattended cold
+reconnect capability with an advertising-window caveat, not a claim of
+unconditional first-attempt reliability.
+
+The same pass exposed a separate shutdown bug. Restoring classic A2DP while the
+raw Aura LE control bearer was still held returned `br-connection-busy`.
+Releasing LE first removed that ordering error, although the speaker could still
+reject the optional classic profile with `Host is down`. Version 0.4 therefore
+closes the control supervisor first and treats bounded A2DP restoration as a
+separate best-effort handoff. A rejected A2DP handoff is reported and its private
+marker retained; it no longer keeps the control supervisor alive.
 
 ## Evidence matrix
 
@@ -116,8 +165,16 @@ The session was intentionally left running; no final shutdown was performed.
 | Held-session stop avoids post-role reconnect | Manual 3 START / 2 STOP series with exact control acknowledgements | Verified on this host |
 | v0.3 supervisor survives separate CLI invocations | Automated 4 START / 3 STOP held-session series | Verified on this host |
 | Bounded acquisition survives transient Aura misses | Two injected misses plus final armed hardware acquisition | Verified |
-| Fresh start after any shutdown needs no button | One immediate rebuild passed; a later closed-window rebuild failed before commands | Refuted as a general claim |
-| v0.3 automated lifecycle produced two-speaker audio | No playback in that pass | Not tested |
+| Typed D-Bus scan resolves current Aura RPA | Fresh FDDF/PID/stable-address match | Verified read-only |
+| Resolver accepts cached/stale RPA when FDDF is absent | Competing-phone trial returned no candidate and no writes | Refuted |
+| Forced-LE cold START with no competing host | Phone-disconnected, no-button trial reached `linked` over LE | Verified on this pair |
+| No-button cold reconnect can be repeated | Two successful cold rounds, with one safe FDDF-window miss between them | Verified with an advertising-window caveat |
+| Every immediate post-shutdown start succeeds | 30-second scan saw 49 events but no FDDF and correctly sent no command | Refuted on tested state |
+| Automated cold lifecycle produced two-speaker audio | Single JBL source at 15%; listener explicitly confirmed both speakers | Verified |
+| Shutdown can restore classic A2DP before closing LE | BlueZ returned `br-connection-busy`; release-first ordering is required | Refuted on tested host |
+| Delayed FDDF retry covers an observed advertising gap | First 30-second service scan missed; 15-second delay plus rescan reached `ready/le` | Verified on this host |
+| Installed service recovers an idle Aura bearer loss | Deliberate Aura control-child termination caused nonzero exit, systemd restart, role normalization and `ready/le` | Verified on this host |
+| Boot-service control stays separate from Aura A2DP | Deployed service forced to LE; both PulseAudio modules present and no Aura sink after recovery | Verified on this host |
 
 ## Failed or incomplete approaches
 
@@ -148,9 +205,9 @@ The session was intentionally left running; no final shutdown was performed.
    BASS characteristic?
 4. Is `7951` emitted on another transport or only in specific firmware states?
 5. How much acoustic offset remains when measured with two microphones?
-6. Can the Aura's connectable window or rotating LE fallback be opened without
-   its physical Bluetooth button after host/speaker power loss? No usable LE
-   fallback was visible in the tested closed-window state.
+6. What controls the Aura FDDF advertising duty cycle or post-disconnect
+   cooldown, and what retry/backoff policy gives the best first-command success
+   rate without accepting a stale RPA?
 
 Pull requests with sanitized, reproducible evidence are welcome. Do not attach
 raw HCI logs or device identifiers to public issues.

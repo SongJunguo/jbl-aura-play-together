@@ -145,6 +145,47 @@ The official app prefers its BR/EDR control session and uses a random LE address
 only as a fallback. ATT PSM 31 lets Linux use the stable classic identity and
 avoid hard-coding a rotating LE address.
 
+### Rotating LE cold identity
+
+A later phone HCI capture and a typed BlueZ D-Bus probe established the Aura's
+fallback identity without relying on its temporary RPA:
+
+| Field | Observed meaning |
+|---|---|
+| Advertising address type | random, connectable and rotating |
+| Service Data UUID | `0xFDDF`, assigned by Bluetooth SIG to Harman International |
+| Payload bytes 0-1 | PID `212d`, little-endian on air as `2d 21` |
+| Payload bytes 11-16 | stable BR/EDR address in display order |
+| Scan response | `Aura Studio 5` |
+
+The address in the advertisement is only a live transport handle. Identity is
+the conjunction of FDDF UUID, PID, and embedded stable address. The resolver
+therefore calls BlueZ `SetDiscoveryFilter`, consumes typed
+`InterfacesAdded`/`PropertiesChanged` data, and connects immediately with the
+fresh random address. It does not persist the RPA or parse `bluetoothctl` PTY
+output.
+
+`FDDF` and the Authentics `DFFD` advertisement discussed later are distinct
+app-recognized families; they must not be conflated as alternate byte-order
+spellings. Although the `0xFDDF` number is SIG-assigned to Harman, the payload
+schema above is still vendor-defined and undocumented.
+
+An independent PartyBox 520 implementation reports the same FDDF stable-address
+offset and the same live-scan requirement. On this Aura, a 2026-08-29 read-only
+D-Bus probe resolved one verified RPA from five fresh advertisement events.
+When the phone subsequently held Aura A2DP, the Aura stopped exposing FDDF and
+both the typed probe and an interactive BlueZ scan correctly returned no Aura
+candidate. This is a competing-host state, not a reason to accept a stale RPA.
+
+After Android's system Bluetooth UI released the Aura, a fresh resolver pass
+matched the verified identity after 10.7 seconds and the full CCCD-enable plus
+AA command path reached `linked` over LE with no App action or speaker-button
+press. A single JBL source was then audible on both speakers. Two requested
+cold-control rounds also passed. One intervening scan received 49 BLE events
+but no FDDF and failed before command delivery; a later scan saw FDDF again.
+The identity mapping and end-to-end transport are therefore verified, while the
+FDDF advertising duty cycle remains an operational unknown.
+
 ### Linux transport arbitration
 
 The tested Ubuntu host exposed a repeatable ownership conflict that is separate
@@ -171,7 +212,7 @@ implementation detail that can be discarded:
 
 ```text
 offline
-  -> connect Aura PSM 31
+  -> resolve live Aura FDDF identity and connect LE (or use BR/EDR fallback)
   -> connect JBL LE and negotiate MTU 500
   -> ready
   -> JBL ENTER, JBL 7957 action=1, Aura ON
@@ -189,17 +230,19 @@ contrast, three START and two STOP operations succeeded consecutively through
 the same held sessions. The automated supervisor later completed four START and
 three STOP operations without a second button press.
 
-One immediate shutdown/rebuild happened to reconnect, but a later fresh start
-after the Aura's connectable window closed failed with `Host is down` before
-command delivery. No separate named or PID-matching V4/FDDf LE advertisement
-was visible in that state. Persisting the bearer is therefore the verified
-solution; cold reconnect without a physical Bluetooth-button press is not.
+The older stable-address-only path had one immediate shutdown/rebuild success
+and later `Host is down` failures. Version 0.4 instead resolves the rotating FDDF
+identity from fresh typed D-Bus events. Two full no-button cold rounds passed,
+and one linked cold start also received a positive two-speaker listening result.
+One intervening 30-second FDDF miss shows why the implementation still refuses
+to call the path unconditional. Persisting the bearer remains the lowest-latency
+daily control solution; a later cold start is an evidenced fallback rather than
+a guaranteed fixed-time operation.
 
-To avoid missing the short physical window through process-launch latency,
-v0.3 repeatedly issues the Aura connect request every 250 ms within a bounded
-45-second acquisition period. The supervisor is armed first; a button press at
-any point in that period can be captured. This improves acquisition timing but
-does not remotely open a radio window that the speaker has already closed.
+The default LE discovery window is 30 seconds. Candidate acceptance requires a
+fresh random address plus matching FDDF UUID, PID, and embedded stable identity.
+If no such event appears, the supervisor exits before all role writes. It does
+not substitute a same-name device, an old BlueZ object, or a persisted RPA.
 
 The safe STOP order is deliberately receiver-first: Aura OFF must receive its
 exact Set Device Info success acknowledgement before JBL `action=2` and EXIT
@@ -211,8 +254,13 @@ that the speakers are unlinked.
 On hosts with a user systemd manager, the supervisor runs as a transient unit.
 Its termination mode signals the Python supervisor before reaping the two
 transport children, giving it a bounded opportunity to execute STOP. Graceful
-`shutdown` was verified. Power failure, speaker power-off, and unconditional
-process killing remain non-transactional recovery cases.
+`shutdown` was verified. The raw Aura LE bearer must be closed before asking
+BlueZ to restore classic A2DP; the reverse order returned
+`br-connection-busy`. Classic A2DP restoration remains best-effort because the
+speaker may reject it outside its BR/EDR connectable state. That optional
+failure no longer retains the control supervisor. Power failure, speaker
+power-off, and unconditional process killing remain non-transactional recovery
+cases.
 
 ## Separate role namespaces and the DFFD cache caveat
 

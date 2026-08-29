@@ -47,15 +47,20 @@ operations then completed consecutively without another button press, App,
 re-pair, or reconnect. Every Aura ON/OFF returned the App-defined
 `aa00021300` success reply; JBL ENTER/EXIT returned `error_code=0`.
 
-The automated v0.3 supervisor subsequently completed four START operations and
-three STOP operations without another button press. The user-systemd service
-survived across CLI invocations and both PulseAudio Bluetooth modules were
-restored. One immediate shutdown/rebuild also succeeded, but a later rebuild
-after the Aura's connectable window had closed failed before any command with
-`Host is down`. This defines the honest automation boundary: managed
-start/stop is repeatable while the sessions are held; a later cold session may
-need one Aura Bluetooth-button press. No playback was started in this lifecycle
-pass, so it is not presented as another acoustic or BASS result.
+Version 0.4 adds automatic cold discovery without treating a rotating LE
+address as identity. It consumes live BlueZ D-Bus events and requires Harman
+FDDF Service Data, the expected PID, and the embedded stable address to match.
+With the phone disconnected and no speaker button press, two real-hardware
+`shutdown -> LE cold start -> stop` rounds completed. During one linked round,
+a source was sent only to the JBL at 15% volume and the listener again confirmed
+that both speakers were audible.
+
+The negative result is retained: between those two passes, one 30-second scan
+received 49 advertisement events but no Aura FDDF and therefore failed before
+any role write. FDDF later returned within 10.7 seconds and the next cold start
+passed. Cold start is thus proven possible without a button, but every immediate
+scan is not claimed to succeed. Keeping the supervisor in `ready` after `stop`
+remains the most reliable daily path.
 
 Also on 2026-08-28, a second controlled run established an important host-side
 condition: while a phone held the Aura connection, one Ubuntu attempt timed out.
@@ -91,14 +96,16 @@ Other firmware and models are unverified.
 
 ## How it works
 
-1. Before changing either role, a lightweight local supervisor connects to the
-   JBL and Aura and keeps both control sessions open.
+1. Before changing either role, a lightweight local supervisor resolves the
+   Aura's current random LE address from a verified live FDDF advertisement,
+   connects both speakers, and keeps both control sessions open. The stable
+   BR/EDR route remains a compatibility fallback.
 2. Linux writes OneOS `ENTER_AURA_CAST` and `SET_AURACAST_BROADCAST` to the JBL
    private PL characteristic. The controller intent is to start this JBL as a
    broadcaster.
-3. Linux writes AA token `0x3c=ON` to the Aura over ATT on its stable classic
-   Bluetooth identity. The controller records the Aura as SECONDARY/on after a
-   successful reply.
+3. Linux writes AA token `0x3c=ON` to the Aura over ATT on the resolved live LE
+   bearer (or the compatible stable BR/EDR fallback). The controller records
+   the Aura as SECONDARY/on after a successful reply.
 4. `stop` uses the already-open sessions in the safe order Aura OFF, JBL
    `action=2`, then JBL EXIT. It does not gamble on reconnecting after the role
    transition.
@@ -113,8 +120,12 @@ delay seen with independent AirPlay/A2DP outputs.
 Install the small runtime dependency set:
 
 ```bash
-sudo apt install bluez bluez-tools jq python3 xxd
+sudo apt install bluez bluez-tools jq python3 python3-venv xxd
 # PulseAudio hosts also need: sudo apt install pulseaudio-utils
+
+runtime_env="${XDG_DATA_HOME:-$HOME/.local/share}/jbl-aura-link/venv"
+python3 -m venv "${runtime_env}"
+"${runtime_env}/bin/pip" install -r requirements-le.txt
 ```
 
 Pair and trust both speakers with `bluetoothctl`. Disconnect the Aura from any
@@ -123,17 +134,19 @@ phone or other Bluetooth host, then:
 ```bash
 config_path="${XDG_CONFIG_HOME:-$HOME/.config}/jbl-aura-link/devices.env"
 install -Dm600 config/devices.env.example "${config_path}"
-# Replace both placeholder MAC addresses in "${config_path}".
+# Replace both placeholder addresses and point PYTHON_BIN at venv/bin/python.
 
 ./bin/jbl-aura-link doctor
-./bin/jbl-aura-link start
-./bin/jbl-aura-link status
+./bin/jbl-aura-link install-service
+
+jbl-aura-link status
+jbl-aura-link start
 ```
 
 Start audio on the JBL and listen to both speakers. To unlink:
 
 ```bash
-./bin/jbl-aura-link stop
+jbl-aura-link stop
 ```
 
 `stop` leaves the two control sessions ready for a later fully automatic
@@ -141,19 +154,16 @@ Start audio on the JBL and listen to both speakers. To unlink:
 control session, release them and restore any previous Aura A2DP profile:
 
 ```bash
-./bin/jbl-aura-link shutdown
+jbl-aura-link shutdown
 ```
 
-The Aura may close its classic connectable window after `shutdown`. If the
-first managed `start` reports `Host is down`, press its Bluetooth button once
-and retry. No further press was needed during the verified held-session
-`start`/`stop` cycles. Prefer `stop`, not `shutdown`, when later automatic
-restart matters.
-
-Version 0.3 waits for the scarce Aura bearer and retries it every 250 ms for up
-to 45 seconds by default. For a closed window, run `start` first and press the
-Aura Bluetooth button while that command is waiting; this avoids racing the
-two-to-three-second blue-light interval.
+Version 0.4 uses up to three 30-second live FDDF scan bursts, separated by
+15-second delays. If the speaker remains between advertising windows after all
+three bursts, startup fails before any role write rather than guessing from a
+stale RPA. The installed systemd unit then retries after 20 seconds. Two
+no-button cold starts passed on the tested pair, with one safe first-burst miss
+between them. While the supervisor remains `ready` or `linked`, normal
+`start`/`stop` does not rescan and remains the most reliable daily path.
 
 The real device config lives outside the repository by default. Never put
 device addresses, captures, certificates, account tokens, or app packages in
@@ -164,18 +174,35 @@ an issue or commit.
 | Command | Purpose |
 |---|---|
 | `doctor` | Check tools, adapter, config and pairing |
+| `install-service` | Install and enable the private per-user boot service and launcher |
 | `start` | Start/reuse the persistent sessions, then link |
 | `stop` | Unlink through the held sessions and keep them ready |
-| `shutdown` | Unlink, close both sessions, and restore prior A2DP |
+| `shutdown` | Unlink and close both sessions, then best-effort restore prior A2DP |
 | `status` | Show managed state, or conservative cached DFFD fallback |
 | `recover-stop` | Explicit best-effort recovery without a held session |
 | `frame` | Build PL frames offline without touching hardware |
 
-`start` launches a transient user-systemd supervisor when available. The
-supervisor is Python standard library only, keeps both `gatttool` children, and
-accepts only local commands over a mode-0600 Unix socket in a mode-0700
-directory. If Linux owned the Aura A2DP profile, it remains released while the
-supervisor is active and `shutdown` restores it.
+`install-service` copies only the public CLI, session manager and unit template
+under `~/.local`, installs `~/.local/bin/jbl-aura-link`, and enables
+`jbl-aura-link-session.service`. At boot it establishes the control bearers and
+stays `ready`; it does not link the speakers or start audio until `start` is
+called. True pre-login boot startup requires user lingering; the installer
+reports when it is disabled.
+
+The daemon monitors both held control bearers. An idle disconnect or any
+`degraded` command result makes the daemon exit nonzero; the installed unit then
+rescans and reconnects. If the prior state could have changed speaker roles,
+the replacement daemon sends the verified OFF/STOP/EXIT sequence before it
+publishes `ready`.
+
+Without an installed unit, `start` retains the transient-user-systemd fallback.
+The held session path is Python standard library code; automatic LE cold
+discovery adds the small `dbus-fast` dependency. The supervisor keeps both
+`gatttool` children and accepts only local commands over a mode-0600 Unix socket
+in a mode-0700 directory. If Linux owned the Aura A2DP profile, it remains
+released while the supervisor is active. `shutdown` releases control first,
+then attempts a bounded A2DP restoration; a rejected restoration is reported as
+pending rather than keeping the control supervisor alive.
 
 The systemd unit uses main-process-first termination so the supervisor gets a
 bounded chance to send the safe unlink sequence before its transport children
@@ -185,8 +212,13 @@ still cannot be made transactional.
 On PulseAudio hosts, the default `auto` guard temporarily unloads only
 `module-bluetooth-policy` and `module-bluetooth-discover` while establishing the
 two control sessions, then reloads both. The verified sessions remain alive
-after those modules return. Other Bluetooth audio is interrupted only during
-that short setup window.
+after those modules return. A mode-0600 private restoration snapshot lets the
+per-user unit repair those modules even after a failed or restarted startup.
+Other Bluetooth audio is interrupted only during that short setup window.
+
+On hardware where the FDDF/LE path has been verified, set `AURA_TRANSPORT=le`
+for the boot service. `auto` retains the classic compatibility fallback, which
+can also make BlueZ expose an Aura A2DP sink on some hosts.
 
 If the supervisor is killed while linked, the speakers may reject a fresh
 recovery connection. `recover-stop` is deliberately labelled best-effort and
@@ -199,16 +231,17 @@ under `/tmp`. Direct BlueZ session release is bounded by
 ## Documentation
 
 - [Reproduction guide](docs/REPRODUCTION.md)
+- [No-button cold reconnect acceptance](docs/COLD_RECONNECT_2026-08-29.md)
 - [Protocol notes](docs/PROTOCOL.md)
 - [Evidence and unresolved questions](docs/EVIDENCE.md)
 - [Prior open-source research](docs/PRIOR_RESEARCH.md)
 - [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
 ## Resource use
 
-The implementation is Bash plus one Python-standard-library supervisor around
-BlueZ `gatttool`. It has no CUDA, GPU, audio decoding, model, cloud, or account
-dependency.
+The implementation is Bash plus Python, `dbus-fast`, and BlueZ `gatttool`. It
+has no CUDA, GPU, audio decoding, model, cloud, or account dependency.
 
 ## License and trademarks
 

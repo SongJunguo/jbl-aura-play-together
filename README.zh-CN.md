@@ -35,12 +35,15 @@ PartyTogether 页面使用 ENTER/EXIT 状态机，而 `7957` 来自 App 内另�
 连接并持续持有后，同一会话连续完成了 3 次 START 和 2 次 STOP；每次琉璃 ON/OFF
 都返回 `aa00021300`，JBL ENTER/EXIT 都返回 `error_code=0`。
 
-最终的 v0.3 自动管理器又在不再次按键的情况下完成了 4 次 START、3 次 STOP；其间
-PulseAudio 蓝牙模块恢复，用户级 systemd 服务跨命令保持存活。一次紧接着执行的
-`shutdown / start` 冷重建也曾成功，但后来等琉璃的可连接窗口关闭后再次冷重建，尚未
-发送命令便返回 `Host is down`。因此准确边界是：持有会话时 `start/stop` 可重复全
-自动；完全 `shutdown` 后的下一次冷启动可能仍需按一次琉璃蓝牙键。该轮没有播放，
-所以不算新的声学或 BASS 证据。
+v0.4 又补齐了自动冷发现：它不再把会轮换的 LE 地址当成身份，而是通过 BlueZ D-Bus
+实时扫描 Harman `FDDF` Service Data，并同时校验 PID 与载荷内嵌的稳定地址。手机已经
+断开琉璃、没有按音响按钮时，真实设备完成了两轮 `shutdown → LE cold start → stop`。
+其中一轮建立关联后，以 15% 音量只向 JBL 播放，听者再次确认 JBL 与琉璃都响。
+
+边界也有完整记录：两次成功之间，一次 30 秒扫描收到 49 个其他/非身份广告事件，但
+没有收到琉璃 FDDF，因此在发送任何角色命令前安全失败；稍后 FDDF 又在 10.7 秒内出现，
+下一次冷启动成功。结论因此是：**冷启动已证明可以完全无按键完成，但琉璃广播存在
+空窗，不能把每一次立即重试都宣称为必然成功。** 日常仍建议 `stop` 后保持 `ready`。
 
 因此本仓库的准确结论是：**厂商 Play Together 控制序列与双响结果已实证；标准
 BASS 建链、实际广播源、BIG/BIS 和精确同步误差仍未证明。** 具体原因包括：
@@ -65,12 +68,14 @@ BASS 建链、实际广播源、BIG/BIS 和精确同步误差仍未证明。** �
 
 ## 工作方式
 
-1. 本地轻量管理器先连接琉璃 5，再连接 JBL，并在改变任何角色前持有两条控制会话。
+1. 本地轻量管理器从实时 FDDF 广告解析琉璃当前随机 LE 地址（经典地址保留为兼容
+   回退），再连接 JBL，并在改变任何角色前持有两条控制会话。
 2. JBL 收到 OneOS ENTER 和 `7957 action=1`；琉璃 5 收到 AA `0x3c=ON`。
 3. `stop` 不重新连接，而是沿已持有的会话按“琉璃 OFF → JBL `action=2` → JBL
    EXIT”的安全顺序解除。
-4. `stop` 后会话保持 `ready`，以后可直接再次 `start`；`shutdown` 才关闭会话并
-   恢复先前由工具释放的琉璃 A2DP。
+4. `stop` 后会话保持 `ready`，以后可直接再次 `start`；`shutdown` 关闭会话，再有界地
+   尝试恢复先前由工具释放的琉璃 A2DP。A2DP 恢复失败会被明确报告，但不会继续扣住
+   厂商控制会话。
 
 这种方式让两台音响由设备固件协同，而不是让 Linux 同时驱动两个独立时钟的音频
 sink；后者在实测中有明显一前一后。
@@ -80,8 +85,12 @@ sink；后者在实测中有明显一前一后。
 安装小型运行依赖：
 
 ```bash
-sudo apt install bluez bluez-tools jq python3 xxd
+sudo apt install bluez bluez-tools jq python3 python3-venv xxd
 # PulseAudio 主机还需：sudo apt install pulseaudio-utils
+
+runtime_env="${XDG_DATA_HOME:-$HOME/.local/share}/jbl-aura-link/venv"
+python3 -m venv "${runtime_env}"
+"${runtime_env}/bin/pip" install -r requirements-le.txt
 ```
 
 先用 `bluetoothctl` 配对并信任两台音响。手机和其他主机应断开琉璃 5，但不用删除
@@ -90,51 +99,63 @@ sudo apt install bluez bluez-tools jq python3 xxd
 ```bash
 config_path="${XDG_CONFIG_HOME:-$HOME/.config}/jbl-aura-link/devices.env"
 install -Dm600 config/devices.env.example "${config_path}"
-# 只在 "${config_path}" 中替换两条占位蓝牙地址。
+# 替换两条占位蓝牙地址，并把 PYTHON_BIN 指向上面的 venv/bin/python。
 
 ./bin/jbl-aura-link doctor
-./bin/jbl-aura-link start
-./bin/jbl-aura-link status
+./bin/jbl-aura-link install-service
+
+jbl-aura-link status
+jbl-aura-link start
 ```
 
 用 JBL 已支持的任意方式开始播放，并分别听两台音响。解除关联但保留控制会话：
 
 ```bash
-./bin/jbl-aura-link stop
+jbl-aura-link stop
 ```
 
 要让 App/其他主机接管或明确结束控制会话时：
 
 ```bash
-./bin/jbl-aura-link shutdown
+jbl-aura-link shutdown
 ```
 
-琉璃也可能在 `shutdown` 后关闭经典蓝牙可连接窗口。如果首次 managed `start` 报
-`Host is down`，按一次琉璃蓝牙键并重试。只要管理器仍在 `ready/linked`，真实回归
-中的多轮 `start/stop` 都无需再按。以后还想全自动恢复时应使用 `stop`，不要使用
-`shutdown`。
-
-v0.3 默认会在 45 秒内每 250 ms 重试一次稀缺的琉璃控制连接。若窗口已经关闭，先
-运行 `start`，再在命令等待期间按蓝牙键，电脑就会捕获只有约 2–3 秒的蓝灯窗口；
-不再需要靠手工时机碰运气。
+v0.4 默认最多执行 3 段 30 秒实时 FDDF 扫描，中间各等待 15 秒。若三段之后仍处于
+广播空窗，启动会在写命令前失败，不会拿缓存随机地址冒险；已安装的 systemd 服务会
+再等 20 秒后重试。两轮无按键冷启动已经成功，中间实测的一次首段扫描失败也被新策略
+覆盖。只要管理器仍在 `ready/linked`，`start/stop` 不需要重新扫描，仍是日常最可靠
+路径。
 
 ## 命令
 
 | 命令 | 作用 |
 |---|---|
 | `doctor` | 检查依赖、配置、适配器与配对 |
+| `install-service` | 安装并启用用户级开机服务和简化命令 |
 | `start` | 创建或复用持久控制会话，然后关联 |
 | `stop` | 通过已持有的会话解除，并保持 `ready` |
-| `shutdown` | 解除、关闭两条会话并恢复先前的 A2DP |
+| `shutdown` | 解除并关闭两条会话；随后尽力恢复先前的 A2DP |
 | `status` | 显示 managed 状态；离线时只给保守的 DFFD 诊断 |
 | `recover-stop` | 没有持久会话时显式执行一次尽力恢复 |
 | `frame` | 只离线构造 PL 帧，不接触硬件 |
 
-`start` 在可用时创建一个临时的用户级 systemd 服务。管理器只使用 Python 标准库，
-通过权限为 `0600` 的本地 Unix socket 接收命令；runtime/state 目录权限为 `0700`。
+`install-service` 只把公开 CLI、会话管理器与 unit 模板安装到 `~/.local`，并启用
+`jbl-aura-link-session.service`。开机后服务只建立控制会话并保持 `ready`，不会自动
+关联或播放；之后直接运行 `jbl-aura-link start|stop|status`。真正早于登录启动需要
+用户 lingering，安装器会在未开启时给出提示。没有安装固定 unit 时，`start` 仍保留
+临时用户级 systemd 回退。持久会话本身使用 Python 标准库；自动 LE 冷发现额外使用
+小型 `dbus-fast` 依赖。管理器通过权限为 `0600` 的本地 Unix socket 接收命令；
+runtime/state 目录权限为 `0700`。
+daemon 会持续监测两条控制 bearer；空闲断线或命令进入 `degraded` 时主动非零退出，
+由固定 unit 重新扫描并连接。若上一状态可能改变过音响角色，新 daemon 会先发送已验证
+的 OFF/STOP/EXIT 归一化，再发布 `ready`。
 默认 `auto` 兼容模式只在建立两条会话时临时卸载 PulseAudio 的
 `module-bluetooth-policy` 和 `module-bluetooth-discover`，随后立即恢复它们。控制
-会话在模块恢复后仍保持连接。这几秒内其他蓝牙音频会短暂中断。
+会话在模块恢复后仍保持连接。权限为 `0600` 的私有恢复快照保证 systemd 启动失败或
+重试后也能补回模块。这几秒内其他蓝牙音频会短暂中断。
+
+对已经验证 FDDF/LE 的硬件，开机服务建议设置 `AURA_TRANSPORT=le`。`auto` 会保留经典
+兼容回退，而某些 BlueZ 主机可能因此同时生成琉璃 A2DP Sink。
 
 如果管理器在 `linked` 时被强杀、主机掉电或音响掉电，就不能保证还可新建连接来
 自动解除。`recover-stop` 因而明确标为 best-effort；它不会在缺少确认时谎报成功。
@@ -145,16 +166,18 @@ token、APK、固件或账号材料提交到仓库或公开 issue。
 ## 文档
 
 - [复现步骤](docs/REPRODUCTION.md)
+- [无按键冷重连验收记录](docs/COLD_RECONNECT_2026-08-29.md)
 - [协议记录](docs/PROTOCOL.md)
 - [成功证据与未决问题](docs/EVIDENCE.md)
 - [已有开源研究](docs/PRIOR_RESEARCH.md)
 - [安全与隐私](SECURITY.md)
+- [版本记录](CHANGELOG.md)
 
 ## 资源占用
 
-实现仅包含 Bash、Python 标准库和 BlueZ `gatttool`。它不加载 CUDA、GPU、模型、音频
-解码器、云服务或账号，因此 GPU/显存占用为 **0**；真实回归中的常驻管理器约占十余
-MB 内存。
+实现仅包含 Bash、Python、`dbus-fast` 和 BlueZ `gatttool`。它不加载 CUDA、GPU、
+模型、音频解码器、云服务或账号，因此 GPU/显存占用为 **0**；真实回归中的常驻
+管理器约占十余 MB 内存。
 
 原创代码和文档采用 MIT 许可证。本项目与 JBL、Harman Kardon 及其所有者无隶属或
 背书关系；产品名仅用于说明兼容性。公开仓库不分发 APK、固件、反编译源码、账号

@@ -5,14 +5,17 @@ The speaker role transition can make both control identities reject a fresh
 connection.  This supervisor connects to both devices before changing either
 role and keeps those two gatttool sessions until an explicit shutdown.
 
-It uses only the Python standard library.  Device addresses arrive through the
-process environment, are never written to the state file, and are redacted from
-diagnostics.
+The persistent control path uses the Python standard library.  Fully automatic
+Aura cold discovery additionally uses ``dbus-fast`` to consume BlueZ's typed
+D-Bus advertisement events instead of scraping ``bluetoothctl`` terminal text.
+Device addresses arrive through the process environment, are never written to
+the state file, and are redacted from diagnostics.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import dataclasses
 import fcntl
 import json
@@ -47,7 +50,16 @@ TRANSPORT_FAILURE_RE = re.compile(
     r"Disconnected|connect failed|No route to host",
     re.I,
 )
+DISCONNECT_EVENT_RE = re.compile(
+    r"\bDisconnected\b|Connection (?:closed|terminated|lost)", re.I
+)
 MAX_BUFFER_CHARS = 262_144
+BLUEZ_BUS = "org.bluez"
+BLUEZ_ADAPTER_INTERFACE = "org.bluez.Adapter1"
+BLUEZ_DEVICE_INTERFACE = "org.bluez.Device1"
+DBUS_OBJECT_MANAGER_INTERFACE = "org.freedesktop.DBus.ObjectManager"
+DBUS_PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
+HARMAN_FDDF_UUID = "0000fddf-0000-1000-8000-00805f9b34fb"
 
 
 class SessionError(RuntimeError):
@@ -77,6 +89,22 @@ def env_float(name: str, default: float) -> float:
     return value
 
 
+def env_nonnegative_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    value = default if raw is None else float(raw)
+    if value < 0:
+        raise SessionError(f"{name} must be non-negative")
+    return value
+
+
+def env_nonnegative_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    value = default if raw is None else int(raw)
+    if value < 0:
+        raise SessionError(f"{name} must be a non-negative integer")
+    return value
+
+
 def validate_hex(name: str, value: str) -> str:
     if not value or len(value) % 2 or re.fullmatch(r"[0-9a-fA-F]+", value) is None:
         raise SessionError(f"{name} must be even-length hexadecimal")
@@ -88,12 +116,19 @@ class Config:
     adapter: str
     jbl_mac: str
     aura_mac: str
+    aura_device_name: str
+    aura_transport: str
+    aura_v4_pid: str
     jbl_handle: str
     aura_handle: str
+    aura_cccd_handle: str
     aura_psm: str
     jbl_mtu: int
     connect_timeout: float
     aura_connect_window: float
+    aura_le_scan_window: float
+    aura_le_retries: int
+    aura_le_retry_delay: float
     write_timeout: float
     aura_ack_timeout: float
     join_delay: float
@@ -115,16 +150,35 @@ class Config:
         mtu = int(os.environ.get("JBL_GATT_MTU", "500"))
         if mtu <= 3:
             raise SessionError("JBL_GATT_MTU must be greater than 3")
+        aura_transport = os.environ.get(
+            "AURA_TRANSPORT_OVERRIDE", os.environ.get("AURA_TRANSPORT", "auto")
+        ).lower()
+        if aura_transport not in {"auto", "bredr", "le"}:
+            raise SessionError("AURA_TRANSPORT must be auto, bredr, or le")
+        aura_v4_pid = validate_hex(
+            "AURA_V4_PID", os.environ.get("AURA_V4_PID", "212d")
+        )
+        if len(aura_v4_pid) != 4:
+            raise SessionError("AURA_V4_PID must contain exactly two bytes")
         return cls(
             adapter=os.environ.get("BT_ADAPTER", "hci0"),
             jbl_mac=jbl_mac,
             aura_mac=aura_mac,
+            aura_device_name=os.environ.get("AURA_DEVICE_NAME", "Aura Studio 5"),
+            aura_transport=aura_transport,
+            aura_v4_pid=aura_v4_pid,
             jbl_handle=os.environ.get("JBL_GATT_HANDLE", "0x002a"),
             aura_handle=os.environ.get("AURA_GATT_HANDLE", "0x03ea"),
+            aura_cccd_handle=os.environ.get("AURA_GATT_CCCD_HANDLE", "0x03ed"),
             aura_psm=os.environ.get("AURA_GATT_PSM", "31"),
             jbl_mtu=mtu,
             connect_timeout=env_float("SESSION_CONNECT_TIMEOUT", 18.0),
-            aura_connect_window=env_float("SESSION_AURA_CONNECT_WINDOW", 45.0),
+            aura_connect_window=env_float("SESSION_AURA_CONNECT_WINDOW", 150.0),
+            aura_le_scan_window=env_float("SESSION_AURA_LE_SCAN_WINDOW", 30.0),
+            aura_le_retries=env_nonnegative_int("SESSION_AURA_LE_RETRIES", 2),
+            aura_le_retry_delay=env_nonnegative_float(
+                "SESSION_AURA_LE_RETRY_DELAY", 15.0
+            ),
             write_timeout=env_float("SESSION_WRITE_TIMEOUT", 8.0),
             aura_ack_timeout=env_float("SESSION_AURA_ACK_TIMEOUT", 8.0),
             join_delay=float(os.environ.get("AURA_JOIN_DELAY", "2")),
@@ -147,6 +201,238 @@ class Config:
         ]
         return tuple(value.lower() for value in values if value)
 
+    def v4_payload_matches(self, payload: bytes) -> bool:
+        if len(payload) < 17:
+            return False
+        advertised_pid = bytes.fromhex(self.aura_v4_pid)[::-1]
+        stable_address = bytes.fromhex(self.aura_mac.replace(":", ""))
+        return payload[:2] == advertised_pid and payload[11:17] == stable_address
+
+
+class AuraLeResolver:
+    """Resolve the Aura's current RPA from typed BlueZ D-Bus events.
+
+    The Aura rotates its connectable LE address, so a cached address is not an
+    identity.  A candidate is accepted only when a *fresh discovery signal*
+    carries Harman FDDF service data with both the configured product ID and
+    the configured stable BR/EDR address at the hardware-observed offsets.
+    """
+
+    def __init__(self, config: Config) -> None:
+        self.config = config
+        self.advertisement_events = 0
+        self.service_data_events = 0
+        self.identity_matches = 0
+        self.filter_successes = 0
+        self.interfaces_added = 0
+        self.properties_changed = 0
+        self.random_candidates = 0
+
+    def summary(self) -> str:
+        return (
+            f"advertisements={self.advertisement_events}, "
+            f"service_data={self.service_data_events}, "
+            f"identity_matches={self.identity_matches}, "
+            f"random_candidates={self.random_candidates}, "
+            f"interfaces_added={self.interfaces_added}, "
+            f"properties_changed={self.properties_changed}, "
+            f"filters={self.filter_successes}"
+        )
+
+    def absence_hint(self) -> str:
+        if self.advertisement_events > 0 and self.service_data_events == 0:
+            return (
+                "; Aura FDDF was not observed; the speaker may be connected "
+                "to another host or outside its control-advertising state"
+            )
+        return ""
+
+    @staticmethod
+    def _unwrap(value: object) -> object:
+        """Unwrap dbus-fast Variants without importing it in offline tests."""
+        return getattr(value, "value", value)
+
+    @classmethod
+    def _plain_properties(cls, properties: object) -> dict[str, object]:
+        if not isinstance(properties, dict):
+            return {}
+        return {str(key): cls._unwrap(value) for key, value in properties.items()}
+
+    @classmethod
+    def _service_data(cls, value: object) -> dict[str, bytes]:
+        value = cls._unwrap(value)
+        if not isinstance(value, dict):
+            return {}
+        decoded: dict[str, bytes] = {}
+        for key, raw in value.items():
+            raw = cls._unwrap(raw)
+            try:
+                decoded[str(key).lower()] = bytes(raw)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                continue
+        return decoded
+
+    def candidate_from_properties(self, properties: dict[str, object]) -> str | None:
+        """Return a verified current RPA, or ``None`` for an unrelated object."""
+        address = str(self._unwrap(properties.get("Address", ""))).upper()
+        address_type = str(self._unwrap(properties.get("AddressType", ""))).lower()
+        if MAC_RE.fullmatch(address) is None or address_type != "random":
+            return None
+        if address == self.config.aura_mac:
+            return None
+        self.random_candidates += 1
+        service_data = self._service_data(properties.get("ServiceData", {}))
+        payload = service_data.get(HARMAN_FDDF_UUID)
+        if payload is None:
+            return None
+        self.service_data_events += 1
+        if not self.config.v4_payload_matches(payload):
+            return None
+        self.identity_matches += 1
+        return address
+
+    async def _resolve_async(self, timeout: float) -> str | None:
+        try:
+            from dbus_fast import BusType, DBusError, Variant
+            from dbus_fast.aio import MessageBus
+        except ImportError as error:
+            raise SessionError(
+                "Aura LE discovery requires dbus-fast in PYTHON_BIN; "
+                "install requirements-le.txt"
+            ) from error
+
+        adapter_path = f"/org/bluez/{self.config.adapter}"
+        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        found: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+        device_cache: dict[str, dict[str, object]] = {}
+        property_subscriptions: list[tuple[object, object]] = []
+        watch_tasks: set[asyncio.Task[None]] = set()
+        scanning = False
+        discovery_started = False
+
+        async def proxy(path: str) -> object:
+            introspection = await bus.introspect(BLUEZ_BUS, path)
+            return bus.get_proxy_object(BLUEZ_BUS, path, introspection)
+
+        def maybe_resolve(path: str) -> None:
+            if not scanning or found.done():
+                return
+            self.advertisement_events += 1
+            candidate = self.candidate_from_properties(device_cache.get(path, {}))
+            if candidate is not None:
+                found.set_result(candidate)
+
+        async def watch_device(path: str) -> None:
+            try:
+                device_object = await proxy(path)
+                properties_interface = device_object.get_interface(
+                    DBUS_PROPERTIES_INTERFACE
+                )
+            except (DBusError, KeyError):
+                return
+
+            def on_properties_changed(
+                interface_name: str,
+                changed: dict[str, object],
+                invalidated: list[str],
+            ) -> None:
+                if interface_name != BLUEZ_DEVICE_INTERFACE:
+                    return
+                self.properties_changed += 1
+                cached = device_cache.setdefault(path, {})
+                cached.update(self._plain_properties(changed))
+                for name in invalidated:
+                    cached.pop(str(name), None)
+                maybe_resolve(path)
+
+            properties_interface.on_properties_changed(on_properties_changed)
+            property_subscriptions.append((properties_interface, on_properties_changed))
+
+        try:
+            manager_object = await proxy("/")
+            object_manager = manager_object.get_interface(DBUS_OBJECT_MANAGER_INTERFACE)
+
+            def on_interfaces_added(
+                path: str, interfaces: dict[str, dict[str, object]]
+            ) -> None:
+                raw_properties = interfaces.get(BLUEZ_DEVICE_INTERFACE)
+                if raw_properties is None:
+                    return
+                self.interfaces_added += 1
+                device_cache[path] = self._plain_properties(raw_properties)
+                maybe_resolve(path)
+                task = asyncio.create_task(watch_device(path))
+                watch_tasks.add(task)
+                task.add_done_callback(watch_tasks.discard)
+
+            object_manager.on_interfaces_added(on_interfaces_added)
+            existing = await object_manager.call_get_managed_objects()
+            for path, interfaces in existing.items():
+                raw_properties = interfaces.get(BLUEZ_DEVICE_INTERFACE)
+                if raw_properties is None:
+                    continue
+                device_cache[path] = self._plain_properties(raw_properties)
+                await watch_device(path)
+
+            adapter_object = await proxy(adapter_path)
+            adapter = adapter_object.get_interface(BLUEZ_ADAPTER_INTERFACE)
+            discovery_filter = {
+                "Transport": Variant("s", "le"),
+                "DuplicateData": Variant("b", True),
+                # An empty Pattern matches every device and explicitly bypasses
+                # discoverability filtering on BlueZ 5.64.
+                "Pattern": Variant("s", ""),
+            }
+            await adapter.call_set_discovery_filter(discovery_filter)
+            self.filter_successes += 1
+            # BlueZ may emit InterfacesAdded while StartDiscovery itself is
+            # still awaiting its D-Bus reply.  Arm the fresh-event gate first
+            # so that short FDDF bursts in that interval are not discarded.
+            scanning = True
+            try:
+                await adapter.call_start_discovery()
+                discovery_started = True
+            except DBusError as error:
+                if "InProgress" not in error.type:
+                    raise
+            try:
+                return await asyncio.wait_for(found, timeout=timeout)
+            except TimeoutError:
+                return None
+            finally:
+                scanning = False
+                if discovery_started:
+                    try:
+                        await adapter.call_stop_discovery()
+                    except DBusError:
+                        pass
+                object_manager.off_interfaces_added(on_interfaces_added)
+        except DBusError as error:
+            error_name = getattr(error, "type", "org.bluez.Error.Failed")
+            raise SessionError(f"BlueZ D-Bus LE discovery failed: {error_name}") from error
+        finally:
+            for properties_interface, handler in property_subscriptions:
+                try:
+                    properties_interface.off_properties_changed(handler)
+                except (AttributeError, ValueError):
+                    pass
+            for task in watch_tasks:
+                task.cancel()
+            if watch_tasks:
+                await asyncio.gather(*watch_tasks, return_exceptions=True)
+            bus.disconnect()
+
+    def resolve(self, deadline: float) -> str | None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        try:
+            return asyncio.run(self._resolve_async(remaining))
+        except SessionError:
+            raise
+        except (OSError, RuntimeError, ValueError) as error:
+            raise SessionError("BlueZ D-Bus LE discovery failed") from error
+
 
 class GattSession:
     def __init__(self, name: str, argv: list[str], redactions: tuple[str, ...]) -> None:
@@ -159,6 +445,7 @@ class GattSession:
         self.condition = threading.Condition()
         self.command_lock = threading.Lock()
         self.reader: threading.Thread | None = None
+        self.connected = False
 
     def _redact(self, value: str) -> str:
         value = ANSI_RE.sub("", value)
@@ -196,6 +483,8 @@ class GattSession:
                 text = chunk.decode("utf-8", errors="replace")
                 with self.condition:
                     self.buffer += text
+                    if DISCONNECT_EVENT_RE.search(text) is not None:
+                        self.connected = False
                     if len(self.buffer) > MAX_BUFFER_CHARS:
                         discarded = len(self.buffer) - MAX_BUFFER_CHARS
                         self.buffer = self.buffer[discarded:]
@@ -203,6 +492,7 @@ class GattSession:
                     self.condition.notify_all()
         finally:
             with self.condition:
+                self.connected = False
                 self.condition.notify_all()
 
     def _tail(self, start: int) -> str:
@@ -262,7 +552,22 @@ class GattSession:
                 self._wait(second_expected, start, second_timeout or timeout)
 
     def connect(self, timeout: float) -> None:
-        self.command("connect", CONNECT_ACK_RE, timeout)
+        with self.condition:
+            self.connected = True
+        try:
+            self.command("connect", CONNECT_ACK_RE, timeout)
+        except SessionError:
+            with self.condition:
+                self.connected = False
+            raise
+
+    def is_connected(self) -> bool:
+        with self.condition:
+            return bool(
+                self.connected
+                and self.process is not None
+                and self.process.poll() is None
+            )
 
     def set_mtu(self, mtu: int, timeout: float) -> None:
         self.command(f"mtu {mtu}", MTU_ACK_RE, timeout)
@@ -306,6 +611,8 @@ class GattSession:
                     process.kill()
                     process.wait(timeout=2)
         finally:
+            with self.condition:
+                self.connected = False
             self.process = None
 
 
@@ -323,6 +630,32 @@ class Supervisor:
         self.lock_fd: int | None = None
         self.aura: GattSession | None = None
         self.jbl: GattSession | None = None
+        self.aura_transport = "unresolved"
+
+    def _previous_state_requires_normalization(self) -> bool:
+        if self.state_path.is_symlink() or not self.state_path.is_file():
+            return False
+        try:
+            payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        return payload.get("state") in {
+            "linked",
+            "starting",
+            "stopping",
+            "degraded",
+            "failed",
+        }
+
+    def _control_sessions_connected(self) -> bool:
+        return bool(
+            self.aura is not None
+            and self.jbl is not None
+            and self.aura.is_connected()
+            and self.jbl.is_connected()
+        )
 
     def _safe_parent(self, path: Path) -> None:
         parent = path.parent
@@ -351,6 +684,7 @@ class Supervisor:
             "pid": os.getpid(),
             "updated": now_iso(),
             "last_error": self.last_error,
+            "aura_transport": self.aura_transport,
             "evidence": "control acknowledgements only; not BASS/ISO proof",
         }
         temporary = self.state_path.with_suffix(".tmp")
@@ -372,23 +706,9 @@ class Supervisor:
         self._write_state()
         log(f"state={state}" + (f" error={error}" if error else ""))
 
-    def _build_sessions(self) -> None:
+    def _build_jbl_session(self) -> None:
         cfg = self.config
         redactions = cfg.redactions()
-        self.aura = GattSession(
-            "Aura",
-            [
-                cfg.gatttool,
-                "-i",
-                cfg.adapter,
-                "-b",
-                cfg.aura_mac,
-                "-p",
-                cfg.aura_psm,
-                "-I",
-            ],
-            redactions,
-        )
         self.jbl = GattSession(
             "JBL",
             [
@@ -404,37 +724,147 @@ class Supervisor:
             redactions,
         )
 
-    def connect_sessions(self) -> None:
-        self._set_state("connecting")
-        self._build_sessions()
-        assert self.aura is not None and self.jbl is not None
-        # Aura's connectable window is the scarce resource, so acquire it first.
-        self.aura.start()
-        deadline = time.monotonic() + self.config.aura_connect_window
+    def _build_aura_session(self, address: str, transport: str) -> None:
+        cfg = self.config
+        redactions = (*cfg.redactions(), address.lower())
+        arguments = [cfg.gatttool, "-i", cfg.adapter, "-b", address]
+        if transport == "le":
+            arguments.extend(["-t", "random", "-I"])
+        else:
+            arguments.extend(["-p", cfg.aura_psm, "-I"])
+        self.aura = GattSession("Aura", arguments, redactions)
+
+    def _close_aura(self) -> None:
+        if self.aura is not None:
+            self.aura.close()
+            self.aura = None
+
+    def _new_aura_resolver(self) -> AuraLeResolver:
+        return AuraLeResolver(self.config)
+
+    def _wait_for_aura_retry(
+        self, delay: float, deadline: float, attempt: int, total_attempts: int
+    ) -> None:
+        wait_until = min(deadline, time.monotonic() + delay)
+        actual_delay = max(0.0, wait_until - time.monotonic())
+        log(
+            "Aura FDDF identity was not connectable on scan "
+            f"{attempt}/{total_attempts}; retrying after {actual_delay:.1f}s"
+        )
+        while time.monotonic() < wait_until:
+            if self.shutdown_requested:
+                raise SessionError("shutdown requested while waiting for Aura")
+            time.sleep(min(0.5, max(0.0, wait_until - time.monotonic())))
+
+    def _connect_aura_once(
+        self, address: str, transport: str, deadline: float
+    ) -> None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SessionError("Aura connection deadline expired")
+        self._close_aura()
+        self._build_aura_session(address, transport)
+        assert self.aura is not None
+        try:
+            self.aura.start()
+            self.aura.connect(min(self.config.connect_timeout, max(0.1, remaining)))
+            # The App enables notifications before sending AA commands. The
+            # descriptor handle is identical on the verified BR/EDR and LE DB.
+            self.aura.write(
+                self.config.aura_cccd_handle,
+                "0100",
+                self.config.write_timeout,
+            )
+        except SessionError:
+            self._close_aura()
+            raise
+        self.aura_transport = transport
+
+    def _connect_aura(self, deadline: float) -> None:
+        cfg = self.config
         last_error: SessionError | None = None
-        while True:
-            try:
-                self.aura.connect(
-                    min(
-                        self.config.connect_timeout,
-                        max(0.1, deadline - time.monotonic()),
-                    )
+        le_summary = "not scanned"
+        le_hint = ""
+
+        # The canonical cold path is a fresh FDDF advertisement: the LE address
+        # rotates, while the payload authenticates it with PID + stable BR/EDR
+        # identity.  Try that before spending the scarce window on a classic
+        # address that may no longer accept the vendor ATT bearer.
+        if cfg.aura_transport in {"auto", "le"}:
+            summaries: list[str] = []
+            total_attempts = cfg.aura_le_retries + 1
+            for attempt in range(1, total_attempts + 1):
+                if self.shutdown_requested:
+                    raise SessionError("shutdown requested while waiting for Aura")
+                if time.monotonic() >= deadline:
+                    break
+                resolver = self._new_aura_resolver()
+                scan_deadline = min(
+                    deadline, time.monotonic() + cfg.aura_le_scan_window
                 )
-                break
+                candidate = resolver.resolve(scan_deadline)
+                summaries.append(f"scan {attempt}: {resolver.summary()}")
+                le_summary = "; ".join(summaries)
+                le_hint = resolver.absence_hint()
+                if candidate is None:
+                    last_error = SessionError(
+                        "Aura LE discovery did not resolve an RPA "
+                        f"({resolver.summary()}){le_hint}"
+                    )
+                else:
+                    try:
+                        self._connect_aura_once(candidate, "le", deadline)
+                        return
+                    except SessionError as error:
+                        last_error = error
+                if attempt < total_attempts and time.monotonic() < deadline:
+                    self._wait_for_aura_retry(
+                        cfg.aura_le_retry_delay,
+                        deadline,
+                        attempt,
+                        total_attempts,
+                    )
+
+        if cfg.aura_transport == "le":
+            raise SessionError(
+                "no verified Aura LE advertisement became connectable "
+                f"({le_summary}){le_hint}"
+            ) from last_error
+
+        # Preserve the proven stable-address/physical-button route as a bounded
+        # fallback. Repeated attempts catch the Aura's brief blue-light window.
+        while time.monotonic() < deadline:
+            if self.shutdown_requested:
+                raise SessionError("shutdown requested while waiting for Aura")
+            try:
+                self._connect_aura_once(cfg.aura_mac, "bredr", deadline)
+                return
             except SessionError as error:
                 last_error = error
-                if self.shutdown_requested:
-                    raise SessionError("shutdown requested while waiting for Aura") from error
-                if time.monotonic() >= deadline:
-                    raise SessionError(
-                        "Aura did not become connectable during the configured "
-                        f"retry window: {last_error}"
-                    ) from error
                 time.sleep(0.25)
+        raise SessionError(
+            "Aura did not become connectable through verified BR/EDR or LE paths"
+        ) from last_error
+
+    def connect_sessions(self) -> None:
+        normalize_roles = self._previous_state_requires_normalization()
+        self._set_state("connecting")
+        deadline = time.monotonic() + self.config.aura_connect_window
+        # Aura's bearer is the scarce resource, so acquire it before JBL.
+        self._connect_aura(deadline)
+        self._build_jbl_session()
+        assert self.aura is not None and self.jbl is not None
         self.jbl.start()
         self.jbl.connect(self.config.connect_timeout)
         self.jbl.set_mtu(self.config.jbl_mtu, self.config.write_timeout)
         self._set_state("ready")
+        if normalize_roles:
+            log("normalizing roles after an unclean prior session")
+            if not self._best_effort_stop():
+                error = "could not normalize roles after an unclean prior session"
+                self._set_state("degraded", error)
+                raise SessionError(error)
+            self._set_state("ready")
 
     def start_link(self) -> dict[str, object]:
         if self.state == "linked":
@@ -529,6 +959,7 @@ class Supervisor:
             "state": self.state,
             "pid": os.getpid(),
             "last_error": self.last_error,
+            "aura_transport": self.aura_transport,
         }
 
     def _reply(self, connection: socket.socket, payload: dict[str, object]) -> None:
@@ -577,6 +1008,14 @@ class Supervisor:
             log("persistent control sessions ready")
             assert self.server is not None
             while self.running and not self.shutdown_requested:
+                if self.state == "degraded":
+                    raise SessionError(
+                        self.last_error or "managed session entered degraded state"
+                    )
+                if not self._control_sessions_connected():
+                    raise SessionError(
+                        f"control bearer disconnected while state={self.state}"
+                    )
                 try:
                     connection, _ = self.server.accept()
                 except socket.timeout:

@@ -16,13 +16,20 @@ log_path="${test_tmp}/session.log"
 export BT_ADAPTER=hci0
 export JBL_BT_MAC=02:00:00:00:00:01
 export AURA_BT_MAC=02:00:00:00:00:02
+export AURA_DEVICE_NAME='Aura Studio 5'
+export AURA_TRANSPORT=bredr
+export AURA_V4_PID=212d
 export JBL_GATT_HANDLE=0x002a
 export JBL_GATT_MTU=500
 export AURA_GATT_HANDLE=0x03ea
+export AURA_GATT_CCCD_HANDLE=0x03ed
 export AURA_GATT_PSM=31
 export AURA_JOIN_DELAY=0
 export SESSION_CONNECT_TIMEOUT=2
 export SESSION_AURA_CONNECT_WINDOW=2
+export SESSION_AURA_LE_SCAN_WINDOW=1
+export SESSION_AURA_LE_RETRIES=0
+export SESSION_AURA_LE_RETRY_DELAY=0
 export SESSION_WRITE_TIMEOUT=2
 export SESSION_AURA_ACK_TIMEOUT=2
 export GATTTOOL_BIN="${test_dir}/fixtures/fake-gatttool-session"
@@ -32,7 +39,6 @@ export JBL_STOP_FRAME=504c151f0c007b22616374696f6e223a327d
 export JBL_EXIT_FRAME=504c021f0000
 export AURA_ON_FRAME=aa1304003c0101
 export AURA_OFF_FRAME=aa1304003c0100
-export FAKE_SESSION_CONNECT_FAILS=2
 
 mkdir -p "$(dirname -- "${log_path}")"
 "${python_bin}" "${manager}" daemon \
@@ -68,8 +74,13 @@ assert_state() {
   printf 'PASS managed state %s\n' "${expected}"
 }
 
-assert_state ready "$(request status)"
-unset FAKE_SESSION_CONNECT_FAILS
+ready_response="$(request status)"
+assert_state ready "${ready_response}"
+[[ "$(jq -r '.aura_transport' <<<"${ready_response}")" == 'bredr' ]] || {
+  printf 'FAIL manager did not report the mocked BR/EDR transport\n' >&2
+  exit 1
+}
+printf 'PASS mocked BR/EDR transport selection\n'
 assert_state linked "$(request start)"
 assert_state ready "$(request stop)"
 assert_state linked "$(request start)"
@@ -124,12 +135,85 @@ set -e
   exit 1
 }
 assert_state degraded "${failed_stop_response}"
-assert_state degraded "$(request status)"
-kill -TERM "${daemon_pid}"
+for _ in {1..60}; do
+  ! kill -0 "${daemon_pid}" 2>/dev/null && break
+  sleep 0.05
+done
+set +e
 wait "${daemon_pid}"
-unset FAKE_SESSION_FAIL
-[[ ! -S "${socket_path}" ]] || {
-  printf 'FAIL degraded session socket survived SIGTERM\n' >&2
+degraded_daemon_rc=$?
+set -e
+[[ "${degraded_daemon_rc}" == 1 ]] || {
+  printf 'FAIL degraded daemon returned %s instead of 1\n' \
+    "${degraded_daemon_rc}" >&2
   exit 1
 }
-printf 'PASS degraded session shutdown cleanup\n'
+unset FAKE_SESSION_FAIL
+[[ ! -S "${socket_path}" ]] || {
+  printf 'FAIL degraded session socket survived automatic exit\n' >&2
+  exit 1
+}
+assert_state failed "$(cat "${state_path}")"
+printf 'PASS degraded session exits for supervisor restart\n'
+
+"${python_bin}" "${manager}" daemon \
+  --socket "${socket_path}" --state "${state_path}" --lock "${lock_path}" \
+  >>"${log_path}" 2>&1 &
+daemon_pid=$!
+for _ in {1..40}; do
+  [[ -S "${socket_path}" ]] && break
+  kill -0 "${daemon_pid}" 2>/dev/null || {
+    printf 'FAIL normalization daemon exited during startup\n' >&2
+    exit 1
+  }
+  sleep 0.05
+done
+assert_state ready "$(request status)"
+assert_state shutting-down "$(request shutdown)"
+wait "${daemon_pid}"
+grep -Fq 'normalizing roles after an unclean prior session' "${log_path}" || {
+  printf 'FAIL restarted daemon did not normalize prior uncertain roles\n' >&2
+  exit 1
+}
+printf 'PASS restart normalizes roles after degraded state\n'
+
+printf '{"state":"offline"}\n' >"${state_path}"
+export FAKE_SESSION_DISCONNECT_AFTER_CONNECT=aura
+export FAKE_SESSION_DISCONNECT_DELAY=0.8
+"${python_bin}" "${manager}" daemon \
+  --socket "${socket_path}" --state "${state_path}" --lock "${lock_path}" \
+  >>"${log_path}" 2>&1 &
+daemon_pid=$!
+for _ in {1..40}; do
+  [[ -S "${socket_path}" ]] && break
+  kill -0 "${daemon_pid}" 2>/dev/null || {
+    printf 'FAIL idle-disconnect daemon exited before publishing ready\n' >&2
+    exit 1
+  }
+  sleep 0.05
+done
+assert_state ready "$(request status)"
+for _ in {1..80}; do
+  ! kill -0 "${daemon_pid}" 2>/dev/null && break
+  sleep 0.05
+done
+set +e
+wait "${daemon_pid}"
+disconnect_daemon_rc=$?
+set -e
+unset FAKE_SESSION_DISCONNECT_AFTER_CONNECT FAKE_SESSION_DISCONNECT_DELAY
+[[ "${disconnect_daemon_rc}" == 1 ]] || {
+  printf 'FAIL disconnected daemon returned %s instead of 1\n' \
+    "${disconnect_daemon_rc}" >&2
+  exit 1
+}
+[[ ! -S "${socket_path}" ]] || {
+  printf 'FAIL disconnected ready session kept its socket\n' >&2
+  exit 1
+}
+assert_state failed "$(cat "${state_path}")"
+grep -Fq 'control bearer disconnected while state=ready' "${log_path}" || {
+  printf 'FAIL idle disconnect was not diagnosed\n' >&2
+  exit 1
+}
+printf 'PASS idle bearer disconnect exits for systemd restart\n'

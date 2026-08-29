@@ -1,0 +1,23 @@
+[Unit]
+Description=JBL Authentics and Aura Play Together control session
+Documentation=https://github.com/SongJunguo/jbl-aura-play-together
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+@CONFIG_ENVIRONMENT@
+@EXEC_START_PRE@
+@EXEC_START@
+@EXEC_START_POST@
+@EXEC_STOP_POST@
+Restart=on-failure
+RestartSec=20s
+KillMode=mixed
+TimeoutStartSec=210s
+TimeoutStopSec=60s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
