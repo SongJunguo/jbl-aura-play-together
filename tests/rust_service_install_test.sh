@@ -34,6 +34,7 @@ printf '%s\n' \
 chmod 0755 "${fake_bin}/systemctl"
 
 HOME="${test_home}" \
+XDG_CONFIG_HOME="${test_home}/.config" \
 PATH="${fake_bin}:/usr/bin:/bin" \
 SYSTEMCTL_TEST_LOG="${systemctl_log}" \
     "${repo_root}/scripts/install-rust-user-service.sh" --binary "${fixture_binary}" >/dev/null
@@ -68,6 +69,7 @@ fi
 
 printf '%s\n' '# operator-value-preserved' >>"${rust_config}"
 HOME="${test_home}" \
+XDG_CONFIG_HOME="${test_home}/.config" \
 PATH="${fake_bin}:/usr/bin:/bin" \
 SYSTEMCTL_TEST_LOG="${systemctl_log}" \
     "${repo_root}/scripts/install-rust-user-service.sh" \
@@ -80,6 +82,7 @@ conflict_home="${test_root}/conflict-home"
 mkdir -m 0700 -- "${conflict_home}"
 set +e
 HOME="${conflict_home}" \
+XDG_CONFIG_HOME="${conflict_home}/.config" \
 PATH="${fake_bin}:/usr/bin:/bin" \
 SYSTEMCTL_TEST_LOG="${systemctl_log}" \
 LEGACY_UNIT_ENABLED=1 \
