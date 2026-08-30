@@ -16,11 +16,31 @@ This is a convenience, not a guarantee that every external tool is safe to
 paste publicly. Review all logs manually and replace local identifiers with
 role labels before sharing.
 
-The persistent supervisor accepts commands only through a local Unix socket
-with mode `0600` inside a mode-`0700` runtime directory. Its JSON state and log
-files are also user-private and deliberately omit configured device addresses.
-The output buffer is bounded, and the implementation has no listener on a TCP
-port, cloud API, account token, or GPU/model process.
+The historical v0.4 persistent supervisor accepts commands only through a local
+Unix socket with mode `0600` inside a mode-`0700` runtime directory. Its JSON
+state and log files are user-private and deliberately omit configured device
+addresses; v0.4 has no TCP listener.
+
+The Rust alpha instead has a fixed loopback TCP listener on
+`127.0.0.1:8096`. It does not listen on a LAN interface by default. The local
+HTTP surface enforces Host and Origin checks, CSRF tokens for mutations, a
+Content Security Policy, bounded request framing/body sizes and bounded,
+sanitized responses. Enabling non-loopback access is outside the default
+security model and requires explicit authentication and origin policy. Neither
+implementation exposes a cloud API or account token.
+
+Rust crash consistency fails closed. Graceful shutdown propagates teardown
+errors through a nonzero process exit, and a teardown latch prevents later
+cleanup from masking an uncertain result. The independent owner-only
+`uncertainty.pending` marker is authoritative across restart: even if syncing a
+new clean state fails, ordinary mutations remain blocked until explicit
+recovery. Do not delete or edit this marker to bypass recovery.
+
+The loopback Web owner also fails closed on listener exit. Accept/serve errors
+return the controller actor, and normal or abnormal listener termination runs
+exactly one `shutdown_for_exit`. A device-safety failure takes precedence; a
+successful shutdown does not hide the original `AcceptFailed`, and this exit
+path never clears a pending journal.
 
 Bluetooth utilities still need device addresses as local process arguments.
 Consequently, a same-user/root process listing or an external systemd diagnostic

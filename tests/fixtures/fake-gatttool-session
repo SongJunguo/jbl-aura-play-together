@@ -37,14 +37,18 @@ while IFS= read -r command; do
       printf '\nMTU was exchanged successfully: %s\n[fake][%s]> ' \
         "${command#mtu }" "${role}"
       ;;
-    char-write-req\ *)
+    char-write-req\ * | char-write-cmd\ *)
       frame="${command##* }"
       if [[ "${FAKE_SESSION_FAIL:-}" == 'aura-off' && "${role}" == 'aura' &&
         "${frame}" == 'aa1304003c0100' ]]; then
         printf '\nCommand Failed: injected Aura OFF failure\n[fake][%s]> ' "${role}"
         continue
       fi
-      printf '\nCharacteristic value was written successfully\n'
+      if [[ "${command}" == char-write-req\ * ]]; then
+        printf '\nCharacteristic value was written successfully\n'
+      else
+        printf '\n'
+      fi
       if [[ "${role}" == 'aura' ]]; then
         printf 'Notification handle = 0x03ec value: aa 00 02 13 00\n'
       elif [[ "${frame}" == 504c011f* || "${frame}" == 504c021f* ]]; then

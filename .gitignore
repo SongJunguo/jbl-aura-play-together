@@ -11,11 +11,15 @@ logs/
 captures/
 audit/
 .audit/
+private-research/
 
 *.pem
 *.key
 *.crt
 *.p12
+*.der
+*.jks
+*.keystore
 *.db
 *.db-*
 *.sqlite
@@ -25,8 +29,12 @@ audit/
 *.btsnoop
 *.btsnoop_hci
 *.apk
+*.aab
 *.xapk
 *.apks
+*.bin
+*.img
+*.har
 *.zip
 *.7z
 *.tar
@@ -47,5 +55,6 @@ core.*
 .vscode/
 __pycache__/
 *.pyc
+rust/target/
 .DS_Store
 *~

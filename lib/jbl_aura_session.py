@@ -124,6 +124,7 @@ class Config:
     aura_cccd_handle: str
     aura_psm: str
     jbl_mtu: int
+    aura_mtu: int
     connect_timeout: float
     aura_connect_window: float
     aura_le_scan_window: float
@@ -150,6 +151,9 @@ class Config:
         mtu = int(os.environ.get("JBL_GATT_MTU", "500"))
         if mtu <= 3:
             raise SessionError("JBL_GATT_MTU must be greater than 3")
+        aura_mtu = int(os.environ.get("AURA_GATT_MTU", "500"))
+        if aura_mtu <= 3:
+            raise SessionError("AURA_GATT_MTU must be greater than 3")
         aura_transport = os.environ.get(
             "AURA_TRANSPORT_OVERRIDE", os.environ.get("AURA_TRANSPORT", "auto")
         ).lower()
@@ -172,6 +176,7 @@ class Config:
             aura_cccd_handle=os.environ.get("AURA_GATT_CCCD_HANDLE", "0x03ed"),
             aura_psm=os.environ.get("AURA_GATT_PSM", "31"),
             jbl_mtu=mtu,
+            aura_mtu=aura_mtu,
             connect_timeout=env_float("SESSION_CONNECT_TIMEOUT", 18.0),
             aura_connect_window=env_float("SESSION_AURA_CONNECT_WINDOW", 150.0),
             aura_le_scan_window=env_float("SESSION_AURA_LE_SCAN_WINDOW", 30.0),
@@ -593,6 +598,12 @@ class GattSession:
             ack_timeout,
         )
 
+    def write_aura_command(self, handle: str, frame: str, ack_timeout: float) -> None:
+        # JBL One 2.7.9 uses ATT Write Command (0x52) for Aura Studio 5 and
+        # treats only the exact SetDevInfo notification as business success.
+        # There is deliberately no synthetic transport-write acknowledgement.
+        self.command(f"char-write-cmd {handle} {frame}", AURA_ACK_RE, ack_timeout)
+
     def close(self) -> None:
         process = self.process
         if process is None:
@@ -768,13 +779,16 @@ class Supervisor:
         try:
             self.aura.start()
             self.aura.connect(min(self.config.connect_timeout, max(0.1, remaining)))
-            # The App enables notifications before sending AA commands. The
+            # The App enables notifications before sending the observed AA command. The
             # descriptor handle is identical on the verified BR/EDR and LE DB.
             self.aura.write(
                 self.config.aura_cccd_handle,
                 "0100",
                 self.config.write_timeout,
             )
+            # HomeBT V5 enables RX first and negotiates MTU 500 before sending
+            # SetDevInfoFeat.  Do not inherit the legacy AA path's implicit MTU.
+            self.aura.set_mtu(self.config.aura_mtu, self.config.write_timeout)
         except SessionError:
             self._close_aura()
             raise
@@ -886,10 +900,9 @@ class Supervisor:
             )
             if self.config.join_delay > 0:
                 time.sleep(self.config.join_delay)
-            self.aura.write_aura(
+            self.aura.write_aura_command(
                 self.config.aura_handle,
                 self.config.aura_on,
-                self.config.write_timeout,
                 self.config.aura_ack_timeout,
             )
         except SessionError as error:
@@ -907,10 +920,9 @@ class Supervisor:
         assert self.aura is not None and self.jbl is not None
         succeeded = True
         try:
-            self.aura.write_aura(
+            self.aura.write_aura_command(
                 self.config.aura_handle,
                 self.config.aura_off,
-                self.config.write_timeout,
                 self.config.aura_ack_timeout,
             )
         except SessionError as error:

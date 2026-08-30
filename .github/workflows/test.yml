@@ -8,12 +8,41 @@ permissions:
   contents: read
 
 jobs:
-  bash:
-    runs-on: ubuntu-24.04
+  rust-ubuntu:
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+      - name: Install neutral-build and artifact-inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap binutils file ripgrep
+      - name: Locked dependency security and license policy
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+          cargo audit --file rust/Cargo.lock
+          cargo deny --manifest-path rust/Cargo.toml --config rust/deny.toml --locked check all
+      - name: Rust formatting and lint
+        run: |
+          cargo fmt --manifest-path rust/Cargo.toml -- --check
+          cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+      - name: Rust tests and neutral release build
+        run: |
+          cargo test --locked --manifest-path rust/Cargo.toml
+          ./rust/build-neutral-release.sh "${RUNNER_TEMP}/jbl-aura-link"
+
+  bash:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - name: Install offline test dependencies
         run: |
           sudo apt-get update
@@ -23,15 +52,19 @@ jobs:
           echo "PYTHON_BIN=${RUNNER_TEMP}/jbl-aura-test-venv/bin/python" >>"${GITHUB_ENV}"
       - name: Syntax
         run: |
-          bash -n bin/jbl-aura-link tests/test.sh tests/session_test.sh tests/privacy.sh tests/fixtures/*
-          "${PYTHON_BIN}" -m py_compile lib/jbl_aura_session.py tests/resolver_test.py
+          bash -n bin/jbl-aura-link rust/build-neutral-release.sh scripts/*.sh tests/*.sh tests/fixtures/*
+          "${PYTHON_BIN}" -m py_compile lib/jbl_aura_session.py tests/history_blob_privacy.py tests/resolver_test.py
           "${PYTHON_BIN}" -c 'import dbus_fast'
       - name: ShellCheck
-        run: shellcheck -x bin/jbl-aura-link tests/test.sh tests/session_test.sh tests/privacy.sh tests/fixtures/*
+        run: shellcheck -x bin/jbl-aura-link rust/build-neutral-release.sh scripts/*.sh tests/*.sh tests/fixtures/*
       - name: Protocol and transport mocks
         run: |
           ./tests/test.sh
           "${PYTHON_BIN}" ./tests/resolver_test.py
           PYTHON_BIN="${PYTHON_BIN}" ./tests/session_test.sh
+          ./tests/rust_service_install_test.sh
+          ./scripts/firewall-jbl-callback.sh --help >/dev/null
       - name: Public-data privacy guard
-        run: ./tests/privacy.sh
+        run: |
+          ./tests/privacy_self_test.sh
+          ./tests/privacy.sh

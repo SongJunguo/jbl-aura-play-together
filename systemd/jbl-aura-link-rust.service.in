@@ -1,0 +1,39 @@
+[Unit]
+Description=Rust JBL Authentics and Aura Play Together controller
+Documentation=https://github.com/SongJunguo/jbl-aura-play-together
+StartLimitIntervalSec=60s
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/jbl-aura-link-rust --config %h/.config/jbl-aura-link-rust/devices.env serve
+Environment=XDG_STATE_HOME=%h/.local/state
+StateDirectory=jbl-aura-link-rust
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStartSec=30s
+# Native cold discovery is bounded at 150 seconds. Shutdown may first perform
+# one receiver-first STOP and retained-membership checks, so keep ample bounded
+# room without allowing an infinite stop.
+TimeoutStopSec=600s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_BLUETOOTH
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

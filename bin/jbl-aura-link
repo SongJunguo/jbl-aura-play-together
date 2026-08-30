@@ -21,7 +21,7 @@ load_config() {
         JBL_GATT_MTU | JBL_AURACAST_QUALITY | JBL_GATT_TIMEOUT | \
         JBL_CONNECT_DELAY | JBL_STEP_DELAY | AURA_BT_MAC | \
         AURA_DEVICE_NAME | AURA_TRANSPORT | AURA_V4_PID | \
-        AURA_GATT_HANDLE | AURA_GATT_CCCD_HANDLE | AURA_GATT_PSM | \
+        AURA_GATT_HANDLE | AURA_GATT_CCCD_HANDLE | AURA_GATT_PSM | AURA_GATT_MTU | \
         AURA_GATT_TIMEOUT | \
         AURA_GATT_RETRIES | AURA_JOIN_DELAY | AURA_CONTROL_SETTLE | \
         BLUEZ_CONTROL_TIMEOUT | \
@@ -63,6 +63,7 @@ fi
 : "${AURA_GATT_HANDLE:=0x03ea}"
 : "${AURA_GATT_CCCD_HANDLE:=0x03ed}"
 : "${AURA_GATT_PSM:=31}"
+: "${AURA_GATT_MTU:=500}"
 : "${AURA_GATT_TIMEOUT:=12}"
 : "${AURA_GATT_RETRIES:=3}"
 : "${AURA_JOIN_DELAY:=2}"
@@ -88,6 +89,7 @@ fi
 readonly JBL_CMD_ENTER_AURACAST=7937
 readonly JBL_CMD_EXIT_AURACAST=7938
 readonly JBL_CMD_SET_AURACAST_BROADCAST=7957
+# Exact runtime branch captured from JBL One 2.7.9 with this Aura Studio 5.
 readonly AURA_PLAY_TOGETHER_ON='aa1304003c0101'
 readonly AURA_PLAY_TOGETHER_OFF='aa1304003c0100'
 readonly A2DP_SINK_UUID='0000110b-0000-1000-8000-00805f9b34fb'
@@ -103,10 +105,12 @@ fi
 readonly SESSION_RUNTIME_DIR="${session_runtime_dir}"
 readonly SESSION_SOCKET="${SESSION_RUNTIME_DIR}/control.sock"
 readonly SESSION_LOCK="${SESSION_RUNTIME_DIR}/session.lock"
+readonly SESSION_LAUNCH_RESERVATION="${SESSION_RUNTIME_DIR}/launch.reservation"
 readonly SESSION_STATE="${STATE_DIR}/session.json"
 readonly SESSION_LOG="${STATE_DIR}/session.log"
 readonly PULSE_GUARD_STATE="${STATE_DIR}/pulse-bluetooth-guard.tsv"
 readonly SESSION_UNIT='jbl-aura-link-session.service'
+readonly RUST_UNIT='jbl-aura-link-rust.service'
 readonly USER_INSTALL_ROOT="${install_root}"
 readonly USER_LAUNCHER="${user_bin_dir}/jbl-aura-link"
 readonly USER_UNIT_FILE="${user_unit_dir}/${SESSION_UNIT}"
@@ -117,6 +121,7 @@ PULSE_BT_MODULE_IDS=()
 PULSE_BT_MODULE_NAMES=()
 PULSE_BT_MODULE_ARGS=()
 PULSE_BT_MODULE_UNLOADED=()
+OPERATION_LOCK_HELD=0
 
 log() {
   printf '[jbl-aura-link] %s\n' "$*"
@@ -202,6 +207,10 @@ validate_config() {
     fail 'JBL_GATT_MTU must be an integer greater than 3'
     return 1
   fi
+  if [[ ! "${AURA_GATT_MTU}" =~ ^[0-9]+$ ]] || ((AURA_GATT_MTU <= 3)); then
+    fail 'AURA_GATT_MTU must be an integer greater than 3'
+    return 1
+  fi
   if [[ ! "${AURA_GATT_PSM}" =~ ^[0-9]+$ ]]; then
     fail 'AURA_GATT_PSM must be a non-negative integer'
     return 1
@@ -271,6 +280,9 @@ validate_config() {
 }
 
 acquire_lock() {
+  if ((OPERATION_LOCK_HELD == 1)); then
+    return 0
+  fi
   require_command flock
   local lock_dir lock_file
   if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
@@ -279,28 +291,222 @@ acquire_lock() {
     lock_dir="${STATE_DIR}"
   fi
 
-  # Both parents are private to the current user. Reject a pre-existing
-  # symlink and open the lock without truncation, so a fixed /tmp symlink can
-  # never redirect this process into an unrelated file.
-  if [[ -L "${lock_dir}" ]]; then
-    fail "refusing symlinked lock directory: ${lock_dir}"
-    return 1
-  fi
-  umask 077
-  mkdir -p -- "${lock_dir}"
-  chmod 700 -- "${lock_dir}"
+  # Validate rather than silently repairing a pre-existing directory. The
+  # launch reservation and operation lock share this owner-only trust root.
+  ensure_private_directory "${lock_dir}" 'operation-lock' || return 1
   lock_file="${lock_dir}/operation.lock"
   if [[ -L "${lock_file}" ]]; then
     fail "refusing symlinked lock file: ${lock_file}"
     return 1
   fi
   exec 9>>"${lock_file}"
-  flock -n 9 || fail 'another link operation is running'
+  if ! flock -n 9; then
+    exec 9>&-
+    fail 'another link operation is running'
+    return 1
+  fi
+  OPERATION_LOCK_HELD=1
 }
 
 release_operation_lock() {
+  if ((OPERATION_LOCK_HELD == 0)); then
+    return 0
+  fi
   flock -u 9 >/dev/null 2>&1 || true
   exec 9>&-
+  OPERATION_LOCK_HELD=0
+}
+
+ensure_private_directory() {
+  local directory="$1" label="$2" owner mode
+  if [[ -L "${directory}" ]]; then
+    fail "refusing symlinked ${label} directory: ${directory}"
+    return 1
+  fi
+  if [[ -e "${directory}" && ! -d "${directory}" ]]; then
+    fail "${label} path is not a directory: ${directory}"
+    return 1
+  fi
+  if [[ ! -e "${directory}" ]]; then
+    umask 077
+    mkdir -p -- "${directory}"
+    chmod 700 -- "${directory}"
+  fi
+  owner="$(stat -c '%u' -- "${directory}")" || return 1
+  mode="$(stat -c '%a' -- "${directory}")" || return 1
+  if [[ "${owner}" != "$(id -u)" ]]; then
+    fail "${label} directory has the wrong owner"
+    return 1
+  fi
+  if [[ "${mode}" != '700' ]]; then
+    fail "${label} directory must have mode 0700 (found ${mode})"
+    return 1
+  fi
+}
+
+ensure_private_session_runtime_dir() {
+  ensure_private_directory "${SESSION_RUNTIME_DIR}" 'persistent-session runtime'
+}
+
+launch_reservation_present() {
+  [[ -e "${SESSION_LAUNCH_RESERVATION}" || -L "${SESSION_LAUNCH_RESERVATION}" ]]
+}
+
+validate_launch_reservation() {
+  local owner mode
+  ensure_private_session_runtime_dir || return 1
+  if [[ -L "${SESSION_LAUNCH_RESERVATION}" ]]; then
+    fail 'refusing symlinked launch reservation'
+    return 1
+  fi
+  if [[ ! -d "${SESSION_LAUNCH_RESERVATION}" ]]; then
+    fail 'launch reservation is not a directory'
+    return 1
+  fi
+  owner="$(stat -c '%u' -- "${SESSION_LAUNCH_RESERVATION}")" || return 1
+  mode="$(stat -c '%a' -- "${SESSION_LAUNCH_RESERVATION}")" || return 1
+  if [[ "${owner}" != "$(id -u)" ]]; then
+    fail 'launch reservation has the wrong owner'
+    return 1
+  fi
+  if [[ "${mode}" != '700' ]]; then
+    fail "launch reservation must have mode 0700 (found ${mode})"
+    return 1
+  fi
+}
+
+create_launch_reservation() {
+  ensure_private_session_runtime_dir || return 1
+  if launch_reservation_present; then
+    validate_launch_reservation || return 1
+    fail 'a persistent-session launch is already in progress'
+    return 1
+  fi
+
+  # mkdir is an atomic exclusive create and never follows a final-component
+  # symlink.  The fixed marker lives below a verified, owner-only directory.
+  umask 077
+  if ! mkdir -m 700 -- "${SESSION_LAUNCH_RESERVATION}"; then
+    fail 'could not create the persistent-session launch reservation'
+    return 1
+  fi
+  if ! validate_launch_reservation; then
+    rmdir -- "${SESSION_LAUNCH_RESERVATION}" >/dev/null 2>&1 || true
+    return 1
+  fi
+}
+
+adopt_or_create_launch_reservation() {
+  if launch_reservation_present; then
+    validate_launch_reservation
+  else
+    create_launch_reservation
+  fi
+}
+
+service_invocation_claim_path() {
+  local invocation_id="${INVOCATION_ID:-}"
+  if [[ ! "${invocation_id}" =~ ^[[:xdigit:]]{32}$ ]]; then
+    fail 'systemd service hook is missing a valid INVOCATION_ID'
+    return 1
+  fi
+  printf '%s/invocation-%s' "${SESSION_LAUNCH_RESERVATION}" "${invocation_id,,}"
+}
+
+validate_service_invocation_claim() {
+  local claim owner mode
+  claim="$(service_invocation_claim_path)" || return 1
+  if [[ -L "${claim}" ]]; then
+    fail 'refusing symlinked service launch claim'
+    return 1
+  fi
+  if [[ ! -d "${claim}" ]]; then
+    fail 'service launch claim is not a directory'
+    return 1
+  fi
+  owner="$(stat -c '%u' -- "${claim}")" || return 1
+  mode="$(stat -c '%a' -- "${claim}")" || return 1
+  if [[ "${owner}" != "$(id -u)" ]]; then
+    fail 'service launch claim has the wrong owner'
+    return 1
+  fi
+  if [[ "${mode}" != '700' ]]; then
+    fail "service launch claim must have mode 0700 (found ${mode})"
+    return 1
+  fi
+}
+
+claim_launch_reservation_for_service() {
+  local claim entry
+  validate_launch_reservation || return 1
+  claim="$(service_invocation_claim_path)" || return 1
+
+  # A service runtime cycle may adopt the empty marker made by its synchronous
+  # CLI caller, but it may never take over another cycle's claim. INVOCATION_ID
+  # is stable across this unit's ExecStartPre/ExecStartPost/ExecStopPost.
+  for entry in "${SESSION_LAUNCH_RESERVATION}"/*; do
+    [[ -e "${entry}" || -L "${entry}" ]] || continue
+    if [[ "${entry}" != "${claim}" ]]; then
+      fail 'launch reservation belongs to another service invocation'
+      return 1
+    fi
+  done
+  if [[ -e "${claim}" || -L "${claim}" ]]; then
+    validate_service_invocation_claim
+    return
+  fi
+  umask 077
+  if ! mkdir -m 700 -- "${claim}"; then
+    fail 'could not claim launch reservation for this service invocation'
+    return 1
+  fi
+  validate_service_invocation_claim
+}
+
+clear_launch_reservation() {
+  launch_reservation_present || return 0
+  validate_launch_reservation || return 1
+  if ! rmdir -- "${SESSION_LAUNCH_RESERVATION}"; then
+    fail 'launch reservation is not empty; refusing unsafe removal'
+    return 1
+  fi
+}
+
+clear_service_launch_reservation() {
+  local claim
+  launch_reservation_present || return 0
+  validate_launch_reservation || return 1
+  claim="$(service_invocation_claim_path)" || return 1
+
+  # ExecStopPost from an older runtime cycle can overlap a newly queued start.
+  # It must not remove an empty or differently claimed reservation belonging
+  # to that new transaction.
+  if [[ ! -e "${claim}" && ! -L "${claim}" ]]; then
+    return 0
+  fi
+  validate_service_invocation_claim || return 1
+  if ! rmdir -- "${claim}"; then
+    fail 'service launch claim is not empty; refusing unsafe removal'
+    return 1
+  fi
+  if ! rmdir -- "${SESSION_LAUNCH_RESERVATION}"; then
+    fail 'launch reservation contains unexpected entries; refusing unsafe removal'
+    return 1
+  fi
+}
+
+reject_launch_in_progress() {
+  launch_reservation_present || return 0
+  validate_launch_reservation || return 1
+  fail 'persistent-session launch is in progress'
+}
+
+acquire_public_operation_lock() {
+  acquire_lock || return 1
+  if ! reject_launch_in_progress; then
+    release_operation_lock
+    return 1
+  fi
 }
 
 build_pl_frame() {
@@ -686,7 +892,7 @@ recover_stop_link() {
   require_command jq
   require_command timeout
   require_command xxd
-  acquire_lock
+  acquire_public_operation_lock || return 1
   trap 'exit_with_stop_restore $?' EXIT
   trap 'exit_with_stop_restore 130' INT
   trap 'exit_with_stop_restore 143' TERM
@@ -743,7 +949,7 @@ export_session_environment() {
     "${JBL_ENTER_FRAME}" "${JBL_START_FRAME}" "${JBL_STOP_FRAME}" "${JBL_EXIT_FRAME}"
   export BT_ADAPTER JBL_BT_MAC AURA_BT_MAC JBL_GATT_HANDLE JBL_GATT_MTU
   export AURA_DEVICE_NAME AURA_TRANSPORT AURA_V4_PID
-  export AURA_GATT_HANDLE AURA_GATT_CCCD_HANDLE AURA_GATT_PSM
+  export AURA_GATT_HANDLE AURA_GATT_CCCD_HANDLE AURA_GATT_PSM AURA_GATT_MTU
   export AURA_JOIN_DELAY GATTTOOL_BIN
   export SESSION_CONNECT_TIMEOUT SESSION_AURA_CONNECT_WINDOW
   export SESSION_AURA_LE_SCAN_WINDOW SESSION_AURA_LE_RETRIES
@@ -856,20 +1062,22 @@ install_user_service() {
     fail 'a working user systemd manager is required for install-service'
     return 1
   }
+  if systemctl --user is-enabled --quiet "${RUST_UNIT}" >/dev/null 2>&1; then
+    fail "disable ${RUST_UNIT} before enabling the v0.4 service"
+    fail 'the v0.4 and Rust controllers intentionally share exclusive device locks'
+    return 1
+  fi
   [[ -f "${config_file}" ]] || {
     fail "private configuration not found: ${config_file}"
     return 1
   }
+  acquire_public_operation_lock || return 1
 
   # Retire a transient or older installed process before replacing its files.
   # shutdown_session sends the verified STOP sequence when the state is linked.
   if session_available; then
     shutdown_session
   fi
-  # shutdown_session normally exits with the CLI process and lets fd 9 close.
-  # install-service continues in the same process, so release it explicitly
-  # before systemd runs ExecStartPre and acquires the same operation lock.
-  release_operation_lock
   systemctl --user stop "${SESSION_UNIT}" >/dev/null 2>&1 || true
 
   local installed_bin installed_manager installed_template temporary_unit
@@ -905,7 +1113,22 @@ install_user_service() {
 
   systemctl --user daemon-reload
   systemctl --user enable "${SESSION_UNIT}" >/dev/null
-  systemctl --user restart "${SESSION_UNIT}"
+  create_launch_reservation || return 1
+  release_operation_lock
+  local restart_rc=0
+  systemctl --user restart "${SESSION_UNIT}" || restart_rc=$?
+  if ! acquire_lock; then
+    return 1
+  fi
+  if ((restart_rc != 0)); then
+    local failed_state
+    failed_state="$(systemctl --user show "${SESSION_UNIT}" -p ActiveState --value 2>/dev/null || true)"
+    if launch_reservation_present &&
+      [[ "${failed_state}" == 'failed' || "${failed_state}" == 'inactive' ]]; then
+      clear_launch_reservation || return 1
+    fi
+    return "${restart_rc}"
+  fi
 
   if command -v loginctl >/dev/null 2>&1; then
     local linger
@@ -920,6 +1143,12 @@ install_user_service() {
     systemctl --user --no-pager --full status "${SESSION_UNIT}" >&2 || true
     fail 'autostart service was enabled but did not become ready before the timeout'
     return 1
+  fi
+  # The real ExecStartPost clears this marker. This fallback covers a no-op
+  # restart of an already-ready unit and keeps install-service test doubles
+  # honest without weakening the ready-state requirement.
+  if launch_reservation_present; then
+    clear_launch_reservation || return 1
   fi
   log "autostart service installed: ${SESSION_UNIT}"
   log "simple control command installed: ${USER_LAUNCHER} {start|stop|status}"
@@ -942,12 +1171,22 @@ service_preflight() {
   require_command mktemp
   require_command timeout
   require_command xxd
-  acquire_lock
-  trap 'restore_pulse_bluetooth_modules || true; restore_aura_a2dp || true' EXIT
-  disconnect_aura_a2dp
-  begin_pulse_bluetooth_guard
+  acquire_lock || return 1
+  adopt_or_create_launch_reservation || return 1
+  # Install rollback before claiming: even a malformed/missing systemd
+  # invocation ID must not strand the empty marker made by the caller.
+  trap 'restore_pulse_bluetooth_modules || true; restore_aura_a2dp || true; clear_service_launch_reservation || clear_launch_reservation || true' EXIT
+  claim_launch_reservation_for_service || return 1
+  if ! disconnect_aura_a2dp; then
+    return 1
+  fi
+  if ! begin_pulse_bluetooth_guard; then
+    return 1
+  fi
   if is_true "${BLUEZ_FULL_DISCONNECT_BEFORE_SESSION}"; then
-    release_aura_bluez_session
+    if ! release_aura_bluez_session; then
+      return 1
+    fi
   else
     log 'preserving the existing BlueZ ACL for autostart control'
   fi
@@ -962,7 +1201,10 @@ service_post_start() {
     fail 'managed session did not become ready during systemd startup'
     return 1
   fi
-  restore_pulse_bluetooth_modules
+  if ! restore_pulse_bluetooth_modules; then
+    return 1
+  fi
+  clear_service_launch_reservation || return 1
 }
 
 service_cleanup() {
@@ -971,6 +1213,7 @@ service_cleanup() {
     success) restore_aura_a2dp || true ;;
     *) log "skipping A2DP restoration during automatic failure recovery (${SERVICE_RESULT})" ;;
   esac
+  clear_service_launch_reservation || true
 }
 
 session_daemon_foreground() {
@@ -1010,7 +1253,45 @@ launch_session_daemon() {
     }
     if persistent_session_unit_available; then
       persistent_unit=1
-      systemctl --user start "${SESSION_UNIT}"
+      # The installed unit performs its own guarded preflight. Keeping the
+      # outer CLI operation lock while synchronously starting that unit makes
+      # ExecStartPre contend with its caller and fail before any device I/O.
+      # Reserve the entire transaction before releasing the operation lock.
+      # ExecStartPre adopts this private marker; ExecStartPost removes it only
+      # after the daemon is ready, and ExecStopPost removes it on every failure
+      # path. Public writers that enter after ExecStartPre exits therefore
+      # still fail closed instead of writing during the launch gap.
+      create_launch_reservation || return 1
+      release_operation_lock
+      local start_rc=0
+      systemctl --user start "${SESSION_UNIT}" || start_rc=$?
+      if ! acquire_lock; then
+        return 1
+      fi
+      if ((start_rc != 0)); then
+        # A normal failed systemd transaction runs ExecStopPost and has already
+        # removed the marker. If D-Bus failed ambiguously while the unit may
+        # still be activating, retain it: allowing another writer is less safe
+        # than requiring the lifecycle hooks (or logout) to release it.
+        local failed_state
+        failed_state="$(systemctl --user show "${SESSION_UNIT}" -p ActiveState --value 2>/dev/null || true)"
+        if launch_reservation_present &&
+          [[ "${failed_state}" == 'failed' || "${failed_state}" == 'inactive' ]]; then
+          clear_launch_reservation || return 1
+        fi
+        return 1
+      fi
+      if launch_reservation_present; then
+        # `systemctl start` is a no-op when an already-ready unit is active, so
+        # no ExecStartPost exists to consume the caller-created reservation.
+        # Only that proven-ready case may clear it here.
+        if session_available; then
+          clear_launch_reservation || return 1
+        else
+          fail 'systemd start completed without a ready session or reservation handoff'
+          return 1
+        fi
+      fi
     else
       : >"${SESSION_LOG}"
       systemctl --user stop "${SESSION_UNIT}" >/dev/null 2>&1 || true
@@ -1072,7 +1353,7 @@ start_link() {
   require_command jq
   require_command timeout
   require_command xxd
-  acquire_lock
+  acquire_public_operation_lock || return 1
 
   local response
   if ! session_available; then
@@ -1108,7 +1389,7 @@ stop_link() {
   validate_config
   require_session_manager
   require_command jq
-  acquire_lock
+  acquire_public_operation_lock || return 1
   local response
   if ! session_available; then
     fail 'no managed control session; fresh reconnect may be unavailable after linking'
@@ -1128,7 +1409,7 @@ shutdown_session() {
   require_command busctl
   require_command jq
   require_command timeout
-  acquire_lock
+  acquire_public_operation_lock || return 1
   local response attempt
   if session_available; then
     if ! response="$(session_client stop "${SESSION_START_TIMEOUT}")"; then
@@ -1214,7 +1495,7 @@ decode_role() {
 
 show_status() {
   validate_config
-  acquire_lock
+  acquire_public_operation_lock || return 1
   if require_session_manager >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 &&
     show_managed_status; then
     show_autostart_status

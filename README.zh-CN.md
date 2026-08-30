@@ -17,6 +17,41 @@ JBL 的 ATT 传输接受了承载 OneOS `7957 action=1` 的写入，琉璃 5 接
 `aa1304003c0101`，听者确认同一个 JBL 音源在两台音响上都可闻。没有捕获到 JBL
 `7951` 应用层成功通知。
 
+后来又在已安装窄防火墙规则、先 SUBSCRIBE 再写 GATT `7957` 的严格试验中等待 15 秒，
+当前固件仍没有送达 `7951` 回调。因此 Rust 控制器只允许闭集配置
+`JBL_BROADCAST_CONFIRMATION=ack|gena`，这对已实测设备默认使用 `ack`。ACK 模式会明确
+返回 `accepted_unconfirmed` 和 `broadcast_acknowledgement_only`，CLI exit `0`；只有
+收到匹配的 GENA
+动作 33/34 才返回 `accepted` 和 `broadcast_business_notification`。managed `linked`
+只表示最近一次被控制器接受的动作，不等同于 `7951` 或声学证明。
+
+窄 callback 防火墙规则已获授权并由用户安装，但 production strict START 仍以
+`jbl_broadcast_result_timed_out` 结束，随后用 legacy GATT 归一化；规则不是协议成功
+证据。最新 HCI 显示深待机先由 Android 系统 BR/EDR A2DP 自动重连，经 stored link-key
+鉴权/加密与 AVDTP Open，约 `2.5` 秒后才出现 FDDF，App LE 读取更晚。wake module 已
+完成 production 接入并进入最新 neutral artifact。默认冷链路为：stable raw 一次；仅
+在 eligible failure 后执行一次 A2DP ConnectProfile（`20` 秒）；`30` 秒内要求 fresh
+FDDF 精确身份/PID；DisconnectProfile 并在 `5` 秒内确认释放；再重试 stable raw 一次；
+最后保留原 LE fallback。全程共享 `150` 秒 outer deadline；释放未确认即在角色写前
+失败。最新无声无按键冷启动在无活动音频流、journal clean、没有已解析的 BlueZ 现成
+device session 条件下，START `122.15` 秒返回 `accepted_unconfirmed`/`linked`；status
+为双成员 verified/healthy、Aura route=`fresh_le`；STOP `15.89` 秒返回
+`accepted_unconfirmed`/`ready`，最终 journal clean、`NRestarts=0`。手机 App 未参与该
+事务，但没有 ADB 手机状态证据。整体 no-button cold path 已在 `150` 秒内实机验收；
+A2DP `wake_then_stable` 子路径本轮未单独命中/证明。
+
+当前离线门禁为 `258` 个 library tests、`8` 个 CLI tests（主 harness 共 `266`），另有
+FIFO private-file helper `1/1`；audit、deny、fallback、
+privacy、neutral 均通过；compatibility evidence mode 已完成。
+
+最终 neutral 重建为 `8,284,440` bytes，最高要求 `GLIBC_2.34`，动态依赖仅 `libc`/
+`libgcc`；该新 binary 尚待安装后复核 digest。此前已安装 service checkpoint 为
+artifact/installed/process digest 已一致。重启并执行一次只读 status 后，service 为
+enabled+active、`NRestarts=0`、managed unknown/offline；`15` 秒 restart-idle 样本为
+RSS `8,828 KiB`、`1` thread、`15` fds、平均 CPU `0.0667%`（`1` tick）。loopback
+Web/status 页面可读，只显示两个
+脱敏成员、allowlisted channel、`last_action`/`age_ms`，CSP/CSRF 保持启用。
+
 随后对 JBL One `2.7.9` 与 Harman Kardon One `2.6.11` 的互操作分析确认：
 
 - JBL 的 `7957` 助手流程把受控 JBL 自身地址放进广播对象，并等待 `7951`；
@@ -56,6 +91,59 @@ BASS 建链、实际广播源、BIG/BIS 和精确同步误差仍未证明。** �
 
 详见[成功证据与未决问题](docs/EVIDENCE.md)和[协议记录](docs/PROTOCOL.md)。
 
+后续开发遵守明确的 clean-room、隐私和语言规则，见
+[仓库工作规则](AGENTS.md)、[上游功能吸收计划](docs/UPSTREAM_INTAKE.md)与
+[语言决策 ADR-0001](docs/ADR-0001-LANGUAGE.md)。当前 v0.5 产品主线固定为 Rust
+1.96.0；已经实机验证的 Python/BlueZ 实现继续作为行为基准和回退，直到 Rust 通过
+相同硬件验收门槛。
+
+开发顺序固定为 Ubuntu 优先：先在 Ubuntu 22.04 完成并验收 v0.5，再把仓库迁移到
+Windows 11 开始第二阶段适配。Windows 支持目前是计划，不是已经验证的兼容性声明。
+详见[项目目标](docs/PROJECT_GOAL.md)与[平台架构](docs/CROSS_PLATFORM.md)。
+完整产品范围、使用方式和验收条件单独维护在
+[中文需求规格](docs/REQUIREMENTS.zh-CN.md)中；开发规则不能代替需求文档。
+
+模块化 Rust v0.5 主线现在可以编译成一个 Ubuntu 可执行文件，并已通过受控原生生命周期
+checkpoint：只读路径精确匹配两条私有 member-ID，设备报告预期双成员配置 ready；实机
+STOP 对照仍证明该配置不是实时 linked 状态。Rust 原生 `start/stop` 已获接受，两轮无
+按键冷 `start` 第一轮曾报告 `br_edr`，第二轮最终为 `le`。已配对且 trusted 的稳定
+public 对象只负责触发 BlueZ 连接；程序只在唯一 connected random GATT 对象的 FDDF
+精确匹配 PID 与内嵌稳定身份后才采用。显式恢复回到 `ready`，持久 session 的两次正常
+`stop` 约为 0.44 与 0.57 秒。
+
+约 `03:45` 的早期 Rust 完整歌曲尝试不能作为协议结论：同一实验窗口内 Home Centre
+自动发送了 STOP，JBL 单响结果受到并发写入污染。后来对不含 `7957` 的 Home-flow-only
+build 做干净对照：EOF 修复后 Aura AA ON 与 JBL Wi-Fi ENTER accepted/local linked，
+等待 `15` 秒再仅向 JBL 网络播放，用户仍确认 JBL 响、琉璃不响。这否定了目标方向的
+无 `7957` 设计，也排除原 `2` 秒过短是唯一原因；固定 `10.5`/`15` 秒不是已证明修复。
+随后 exact-GATT 候选重新纳入独立 Assistant `7957` 的 JBL broadcaster 语义。手机
+控制退出后 START accepted，MA 仅向 JBL 网络以请求的 `5%` 播放，用户明确确认两台都
+响，这是首轮 Rust 目标方向声学通过。HTTPS `7957` 虽 HTTP 200 但设备返回 unknown
+command；GATT `0x002a` 仅有 ACK、无 `7951`。普通 STOP 因 Aura ACK timeout 进入
+outcome-unknown，显式 recover-stop 在 `13` 秒内 accepted/ready。安装 fresh-bearer
+release 修复后，第二轮重启服务并退出手机蓝牙控制，再次在仅 JBL、请求 `5%` 下确认
+双响；音乐 idle 后普通 STOP 约 `43` 秒 accepted/ready，无需 recovery。按约定两轮成功
+后停止声音测试。P0/发布仍未完成：`7951` 未确认，且曾有深待机需要手机自动连接唤醒。
+最新 no-button cold run 已验证整体 `fresh_le` fallback，但未单独命中 A2DP
+`wake_then_stable` 分支。该实现仍是跨两个官方状态机的方向化组合，不伪称同一 UI 序列。
+旧 v0.4 双响记录仍是独立证据。v0.4 也继续作为需要人工明确选择的回退，Rust 遇到
+写前拒绝或结果不确定时不会自动切换后端。两个版本共享 owner-only 的
+operation/session 锁，不能同时占有音响。Rust 日常页面使用本机 `8096`，与 Music
+Assistant 的 `8095` 分离。见
+[Rust 实现说明](rust/README.md)与
+[脱敏 checkpoint 证据](docs/RUST_LAN_EVIDENCE_2026-08-30.md)，以及
+[官方 App 与 Rust 对照](docs/OFFICIAL_APP_RUNTIME_EVIDENCE_2026-08-30.md)。
+
+长期产品目标已经扩展为本地优先的开源 JBL One 替代：尽可能覆盖两个最接近公开项目的
+有用能力，同时保留本仓库独有的 Play Together 后端。完整目标和逐项真实状态见
+[Open JBL One 产品需求](docs/OPEN_JBL_ONE_REQUIREMENTS.zh-CN.md)与
+[功能覆盖矩阵](docs/FEATURE_PARITY.zh-CN.md)。建议另建通用主仓库，避免破坏本仓库
+v0.4 已经形成的设备对证据历史。
+
+当前实际执行主线不是铺开普通 JBL 控制，而是
+[Play Together Rust 实施计划](docs/PLAY_TOGETHER_RUST_PLAN.zh-CN.md)：先完成无 App
+start/stop/status、冷启动、恢复、最小页面与 Ubuntu 发布，其他功能全部后置。
+
 ## 已测试组合
 
 - JBL Authentics 300，固件 `26.24.31.50.00`
@@ -66,11 +154,12 @@ BASS 建链、实际广播源、BIG/BIS 和精确同步误差仍未证明。** �
 
 其他固件、系统和型号均未验证。
 
-## 工作方式
+## 历史 v0.4 兼容路径的工作方式
 
 1. 本地轻量管理器从实时 FDDF 广告解析琉璃当前随机 LE 地址（经典地址保留为兼容
    回退），再连接 JBL，并在改变任何角色前持有两条控制会话。
-2. JBL 收到 OneOS ENTER 和 `7957 action=1`；琉璃 5 收到 AA `0x3c=ON`。
+2. v0.4 向 JBL 发送 OneOS ENTER 和 `7957 action=1`；向琉璃 5 发送 AA
+   `0x3c=ON`。
 3. `stop` 不重新连接，而是沿已持有的会话按“琉璃 OFF → JBL `action=2` → JBL
    EXIT”的安全顺序解除。
 4. `stop` 后会话保持 `ready`，以后可直接再次 `start`；`shutdown` 关闭会话，再有界地
@@ -80,7 +169,31 @@ BASS 建链、实际广播源、BIG/BIS 和精确同步误差仍未证明。** �
 这种方式让两台音响由设备固件协同，而不是让 Linux 同时驱动两个独立时钟的音频
 sink；后者在实测中有明显一前一后。
 
-## 快速开始
+## v0.5 Rust alpha 快速开始
+
+先按文档在仓库外准备 owner-only 私有配置，包括你有权使用的客户端证书/私钥、精确
+设备 pin 和私有身份锚点。本项目不分发厂商凭据。启用写入前先阅读完整
+[Rust alpha 指南](rust/README.md)。
+
+```bash
+./rust/build-neutral-release.sh
+./scripts/install-rust-user-service.sh
+# 填写并检查安装后的 owner-only 配置权限。
+jbl-aura-link shutdown
+systemctl --user disable --now jbl-aura-link-session.service
+systemctl --user enable jbl-aura-link-rust.service
+systemctl --user start jbl-aura-link-rust.service
+jbl-aura-link-rust status
+jbl-aura-link-rust start
+jbl-aura-link-rust stop
+```
+
+本机页面为 `http://127.0.0.1:8096`。已测试固件默认
+`JBL_BROADCAST_CONFIRMATION=ack`，因此传输接受返回
+`accepted_unconfirmed`/`broadcast_acknowledgement_only`，CLI exit `0`；这不等同
+`7951` 或声学成功。
+
+## v0.4 回退快速开始
 
 安装小型运行依赖：
 
@@ -169,15 +282,15 @@ token、APK、固件或账号材料提交到仓库或公开 issue。
 - [无按键冷重连验收记录](docs/COLD_RECONNECT_2026-08-29.md)
 - [协议记录](docs/PROTOCOL.md)
 - [成功证据与未决问题](docs/EVIDENCE.md)
+- [官方 App 动态运行证据（2026-08-30）](docs/OFFICIAL_APP_RUNTIME_EVIDENCE_2026-08-30.md)
 - [已有开源研究](docs/PRIOR_RESEARCH.md)
 - [安全与隐私](SECURITY.md)
 - [版本记录](CHANGELOG.md)
 
 ## 资源占用
 
-实现仅包含 Bash、Python、`dbus-fast` 和 BlueZ `gatttool`。它不加载 CUDA、GPU、
-模型、音频解码器、云服务或账号，因此 GPU/显存占用为 **0**；真实回归中的常驻
-管理器约占十余 MB 内存。
+实现仅包含 Bash、Python、`dbus-fast` 和 BlueZ `gatttool`。它不依赖模型、音频
+解码器、云服务或账号；真实回归中的常驻管理器约占十余 MB 内存。
 
 原创代码和文档采用 MIT 许可证。本项目与 JBL、Harman Kardon 及其所有者无隶属或
 背书关系；产品名仅用于说明兼容性。公开仓库不分发 APK、固件、反编译源码、账号

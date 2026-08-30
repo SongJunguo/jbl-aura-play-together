@@ -1,0 +1,33 @@
+# Third-party licenses
+
+This file is generated from the locked Ubuntu release dependency graph by
+`scripts/generate-rust-release-metadata.sh`. Do not edit it manually.
+
+It includes normal, transitive, and build dependencies used to produce the
+release binary, while excluding development-only dependencies. `cargo-deny`
+is a policy gate; it is not this notice and is not a substitute for it.
+
+## Components
+
+| Component | Version | License expression |
+| --- | --- | --- |
+{{#each crates}}
+| [{{package.name}}]({{#if package.repository}}{{package.repository}}{{else}}https://crates.io/crates/{{package.name}}/{{package.version}}{{/if}}) | `{{package.version}}` | `{{license}}` |
+{{/each}}
+
+## License texts
+
+{{#each licenses}}
+### {{{name}}}
+
+Used by:
+
+{{#each used_by}}
+- [{{crate.name}} {{crate.version}}]({{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}/{{crate.version}}{{/if}})
+{{/each}}
+
+```text
+{{{text}}}
+```
+
+{{/each}}

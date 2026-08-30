@@ -42,6 +42,7 @@ def make_config() -> Config:
         aura_cccd_handle="0x03ed",
         aura_psm="31",
         jbl_mtu=500,
+        aura_mtu=500,
         connect_timeout=2.0,
         aura_connect_window=2.0,
         aura_le_scan_window=1.0,

@@ -106,7 +106,6 @@ and a warning is printed. The control shutdown itself is not rolled back.
 - Play Together: stopped;
 - test music: stopped;
 - both PulseAudio Bluetooth modules: present;
-- GPU/CUDA use: none;
 - public code: v0.4 public release; no private artifacts included.
 
 The offline resolver, wrapper, persistent-session, failure-injection,
@@ -146,6 +145,68 @@ The tested host pins `AURA_TRANSPORT=le` for the boot service. `auto` remains a
 public compatibility option, but its classic fallback caused BlueZ to expose an
 idle Aura A2DP sink on this host and was therefore not retained as the deployed
 audio-routing state.
+
+## 2026-08-30 Rust native follow-up
+
+The Rust v0.5 whole-pair backend was later exercised against the same device
+pair. This follow-up preserves the 2026-08-29 v0.4 evidence above as historical
+evidence rather than merging the two implementations into one result.
+
+The first real Rust `stop` occurred during an FDDF advertising window in which
+the Aura identity could not be proved. The action was rejected before the first
+device write and the write-ahead journal returned to `clean`.
+
+A later direct connection attempt to the discovered LE `Device1` failed. A
+bounded nudge through the paired-and-trusted stable public object caused BlueZ
+to connect, but the vendor GATT service appeared on the unique connected random
+object. Rust adopted that object only after its FDDF payload exactly matched the
+expected PID and embedded stable identity. The stable object was therefore a
+connection trigger, not substitute identity evidence.
+
+An explicit Rust recovery then:
+
+1. performed the safe diagnostic checks required by the pending/failed state;
+2. verified the paired stable Aura identity;
+3. mapped that identity to the exact current random GATT identity from fresh
+   FDDF service data;
+4. obtained the required acknowledgements and returned managed state to
+   `ready`.
+
+The native Rust path subsequently completed accepted `start` and `stop`
+actions. Two no-button cold `start` rounds passed; managed status reported
+`br_edr` during the first and ended `le` during the second. Two normal STOP
+actions through the retained session completed in approximately 0.44 and 0.57
+seconds. These are bounded functional results for the tested pair, not evidence
+of a 100% first-attempt rate or permission to skip the random-object identity
+gate.
+
+The crash boundary was also observed directly. An older timeout construction
+caused a real process panic after the pending journal record had been durably
+written. Restart preserved that pending record and blocked ordinary mutation.
+The timeout construction was fixed; explicit accepted recovery, rather than a
+restart or backend switch, was still required to clear uncertainty.
+
+The approximately 03:45 full-song Rust attempt was later found to overlap an
+automatic Home Centre STOP. Its JBL-only audio is therefore contaminated and
+cannot refute or validate a protocol transaction. A later clean trial used the
+current default transaction without the separate Assistant command `7957`:
+Aura AA ON and JBL Wi-Fi ENTER were accepted and managed state became `linked`.
+After the EOF fix, waiting `15` seconds before JBL-only network playback still
+produced no Aura audio. The official Home flow's successful direction was
+instead Android A2DP into Aura, with Aura PRIMARY and JBL RECEIVER. The project
+target therefore reintroduces separate Assistant `7957` JBL-broadcaster
+semantics as a cross-state-machine composition. Exact GATT `0x002a` then
+produced the first Rust target-direction START acoustic pass at requested `5%`.
+No `7951` was observed; ordinary STOP failed on an Aura ACK timeout and explicit
+recovery returned ready within `13` seconds. After the fresh-bearer fix, round
+two repeated the dual-audio START and completed one ordinary approximately
+`43`-second STOP accepted/ready without recovery. This makes no
+BASS/BASE/BIG/BIS/ISO claim. Production wake is present and offline-green, but
+the latest no-button cold hardware round passed via `fresh_le` inside `150`
+seconds. A2DP `wake_then_stable`, `7951` and P0/release remain incomplete. The
+Rust controller does not automatically fail over to v0.4 or replay a write after
+failure; v0.4 remains a separately selected fallback whose historical
+compatibility path includes `7957`.
 
 ## Relevant independent references
 

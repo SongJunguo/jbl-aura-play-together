@@ -1,0 +1,3544 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-r-efi-6.0.0",
+      "description": "UEFI Reference Specification Protocol Constants and Definitions",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://github.com/r-efi/r-efi/wiki"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/r-efi/r-efi"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0 OR LGPL-2.1-or-later"
+        }
+      ],
+      "name": "r-efi",
+      "purl": "pkg:cargo/r-efi@6.0.0",
+      "type": "library",
+      "version": "6.0.0"
+    },
+    {
+      "author": "Manish Goregaokar <manishsmail@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-yoke-0.8.3",
+      "description": "Abstraction allowing borrowed data to be carried along with the backing data it borrows from",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "yoke",
+      "purl": "pkg:cargo/yoke@0.8.3",
+      "type": "library",
+      "version": "0.8.3"
+    },
+    {
+      "author": "The rust-url developers",
+      "bom-ref": "CycloneDxRef-Component-url-2.5.8",
+      "description": "URL library for Rust, based on the WHATWG URL Standard",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/url"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/servo/rust-url"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "url",
+      "purl": "pkg:cargo/url@2.5.8",
+      "type": "library",
+      "version": "2.5.8"
+    },
+    {
+      "author": "Alex Crichton <alex@alexcrichton.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-socket2-0.6.5",
+      "description": "Utilities for handling networking sockets with a maximal amount of configuration\npossible intended.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/socket2"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/rust-lang/socket2"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/socket2"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "socket2",
+      "purl": "pkg:cargo/socket2@0.6.5",
+      "type": "library",
+      "version": "0.6.5"
+    },
+    {
+      "author": "Ted Driggs <ted.driggs@outlook.com>",
+      "bom-ref": "CycloneDxRef-Component-darling_macro-0.20.11",
+      "description": "Internal support for a proc-macro library for reading attributes into structs when\nimplementing custom derives. Use https://crates.io/crates/darling in your code.\n",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/TedDriggs/darling"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "darling_macro",
+      "purl": "pkg:cargo/darling_macro@0.20.11",
+      "type": "application",
+      "version": "0.20.11"
+    },
+    {
+      "author": "The rust-url developers",
+      "bom-ref": "CycloneDxRef-Component-form_urlencoded-1.2.2",
+      "description": "Parser and serializer for the application/x-www-form-urlencoded syntax, as used by HTML forms.",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/servo/rust-url"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "form_urlencoded",
+      "purl": "pkg:cargo/form_urlencoded@1.2.2",
+      "type": "library",
+      "version": "1.2.2"
+    },
+    {
+      "author": "The Rust Project Developers",
+      "bom-ref": "CycloneDxRef-Component-log-0.4.34",
+      "description": "A lightweight logging facade for Rust\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/log"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/log"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "log",
+      "purl": "pkg:cargo/log@0.4.34",
+      "type": "library",
+      "version": "0.4.34"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-icu_collections-2.3.0",
+      "description": "Collection of API for use in ICU libraries.",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "icu_collections",
+      "purl": "pkg:cargo/icu_collections@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-ryu-1.0.23",
+      "description": "Fast floating point to string conversion",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/ryu"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/ryu"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR BSL-1.0"
+        }
+      ],
+      "name": "ryu",
+      "purl": "pkg:cargo/ryu@1.0.23",
+      "type": "library",
+      "version": "1.0.23"
+    },
+    {
+      "author": "Ted Driggs <ted.driggs@outlook.com>",
+      "bom-ref": "CycloneDxRef-Component-darling_core-0.20.11",
+      "description": "Helper crate for proc-macro library for reading attributes into structs when\nimplementing custom derives. Use https://crates.io/crates/darling in your code.\n",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/TedDriggs/darling"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "darling_core",
+      "purl": "pkg:cargo/darling_core@0.20.11",
+      "type": "library",
+      "version": "0.20.11"
+    },
+    {
+      "author": "Peter Glotfelty <peter.glotfelty@microsoft.com>",
+      "bom-ref": "CycloneDxRef-Component-strum-0.26.3",
+      "description": "Helpful macros for working with enums and strings",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/strum"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/Peternator7/strum"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/Peternator7/strum"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "strum",
+      "purl": "pkg:cargo/strum@0.26.3",
+      "type": "library",
+      "version": "0.26.3"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-macro-0.3.34",
+      "description": "The futures-rs procedural macro implementations.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-macro",
+      "purl": "pkg:cargo/futures-macro@0.3.34",
+      "type": "application",
+      "version": "0.3.34"
+    },
+    {
+      "author": "Peter Glotfelty <peter.glotfelty@microsoft.com>",
+      "bom-ref": "CycloneDxRef-Component-strum_macros-0.26.4",
+      "description": "Helpful macros for working with enums and strings",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/strum"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/Peternator7/strum"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/Peternator7/strum"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "strum_macros",
+      "purl": "pkg:cargo/strum_macros@0.26.4",
+      "type": "application",
+      "version": "0.26.4"
+    },
+    {
+      "author": "RustCrypto Developers",
+      "bom-ref": "CycloneDxRef-Component-digest-0.10.7",
+      "description": "Traits for cryptographic hash functions and message authentication codes",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/digest"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/traits"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "digest",
+      "purl": "pkg:cargo/digest@0.10.7",
+      "type": "library",
+      "version": "0.10.7"
+    },
+    {
+      "author": "Alice Maz <alice@alicemaz.com>, Marshall Pierce <marshall@mpierce.org>",
+      "bom-ref": "CycloneDxRef-Component-base64-0.21.7",
+      "description": "encodes and decodes base64 as bytes or utf8",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/base64"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/marshallpierce/rust-base64"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "base64",
+      "purl": "pkg:cargo/base64@0.21.7",
+      "type": "library",
+      "version": "0.21.7"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-sink-0.3.34",
+      "description": "The asynchronous `Sink` trait for the futures-rs library.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-sink",
+      "purl": "pkg:cargo/futures-sink@0.3.34",
+      "type": "library",
+      "version": "0.3.34"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-icu_provider-2.3.1",
+      "description": "Trait and struct definitions for the ICU data provider",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "icu_provider",
+      "purl": "pkg:cargo/icu_provider@2.3.1",
+      "type": "library",
+      "version": "2.3.1"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_i686_msvc-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_i686_msvc",
+      "purl": "pkg:cargo/windows_i686_msvc@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-unicode-ident-1.0.24",
+      "description": "Determine whether characters have the XID_Start or XID_Continue properties according to Unicode Standard Annex #31",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/unicode-ident"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/unicode-ident"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "(MIT OR Apache-2.0) AND Unicode-3.0"
+        }
+      ],
+      "name": "unicode-ident",
+      "purl": "pkg:cargo/unicode-ident@1.0.24",
+      "type": "library",
+      "version": "1.0.24"
+    },
+    {
+      "author": "The wasm-bindgen Developers",
+      "bom-ref": "CycloneDxRef-Component-js-sys-0.3.104",
+      "description": "Bindings for all JS global objects and functions in all JS environments like\nNode.js and browsers, built on `#[wasm_bindgen]` using the `wasm-bindgen` crate.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/js-sys"
+        },
+        {
+          "type": "website",
+          "url": "https://wasm-bindgen.github.io/wasm-bindgen/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "js-sys",
+      "purl": "pkg:cargo/js-sys@0.3.104",
+      "type": "library",
+      "version": "0.3.104"
+    },
+    {
+      "author": "The Rust Project Developers",
+      "bom-ref": "CycloneDxRef-Component-num-derive-0.4.2",
+      "description": "Numeric syntax extensions",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/num-derive"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/rust-num/num-derive"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-num/num-derive"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "num-derive",
+      "purl": "pkg:cargo/num-derive@0.4.2",
+      "type": "application",
+      "version": "0.4.2"
+    },
+    {
+      "author": "The wasm-bindgen Developers",
+      "bom-ref": "CycloneDxRef-Component-wasm-bindgen-macro-support-0.2.127",
+      "description": "Implementation APIs for the `#[wasm_bindgen]` attribute",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/wasm-bindgen"
+        },
+        {
+          "type": "website",
+          "url": "https://wasm-bindgen.github.io/wasm-bindgen/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "wasm-bindgen-macro-support",
+      "purl": "pkg:cargo/wasm-bindgen-macro-support@0.2.127",
+      "type": "library",
+      "version": "0.2.127"
+    },
+    {
+      "author": "David Henningsson <diwic@ubuntu.com>",
+      "bom-ref": "CycloneDxRef-Component-dbus-crossroads-0.5.3",
+      "description": "Framework for writing D-Bus method handlers",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/dbus-crossroads"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/diwic/dbus-rs/"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "dbus-crossroads",
+      "purl": "pkg:cargo/dbus-crossroads@0.5.3",
+      "type": "library",
+      "version": "0.5.3"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows-targets-0.52.6",
+      "description": "Import libs for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows-targets",
+      "purl": "pkg:cargo/windows-targets@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "Alex Crichton <alex@alexcrichton.com>, Steven Fackler <sfackler@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-openssl-sys-0.9.117",
+      "description": "FFI bindings to OpenSSL",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-openssl/rust-openssl"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "openssl-sys",
+      "purl": "pkg:cargo/openssl-sys@0.9.117",
+      "type": "library",
+      "version": "0.9.117"
+    },
+    {
+      "author": "The rust-url developers",
+      "bom-ref": "CycloneDxRef-Component-idna-1.1.0",
+      "description": "IDNA (Internationalizing Domain Names in Applications) and Punycode.",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/servo/rust-url/"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "idna",
+      "purl": "pkg:cargo/idna@1.1.0",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "author": "The Rand Project Developers",
+      "bom-ref": "CycloneDxRef-Component-getrandom-0.4.3",
+      "description": "A small cross-platform library for retrieving random data from system source",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/getrandom"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-random/getrandom"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "getrandom",
+      "purl": "pkg:cargo/getrandom@0.4.3",
+      "type": "library",
+      "version": "0.4.3"
+    },
+    {
+      "author": "The Cranelift Project Developers",
+      "bom-ref": "CycloneDxRef-Component-wasi-0.11.1+wasi-snapshot-preview1",
+      "description": "Experimental WASI API bindings for Rust",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/wasi"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/bytecodealliance/wasi"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "wasi",
+      "purl": "pkg:cargo/wasi@0.11.1%2Bwasi-snapshot-preview1",
+      "type": "library",
+      "version": "0.11.1+wasi-snapshot-preview1"
+    },
+    {
+      "author": "Henri Sivonen <hsivonen@hsivonen.fi>",
+      "bom-ref": "CycloneDxRef-Component-utf8_iter-1.0.4",
+      "description": "Iterator by char over potentially-invalid UTF-8 in &[u8]",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/utf8_iter/"
+        },
+        {
+          "type": "website",
+          "url": "https://docs.rs/utf8_iter/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/hsivonen/utf8_iter"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "utf8_iter",
+      "purl": "pkg:cargo/utf8_iter@1.0.4",
+      "type": "library",
+      "version": "1.0.4"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-icu_properties_data-2.3.0",
+      "description": "Data for the icu_properties crate",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "icu_properties_data",
+      "purl": "pkg:cargo/icu_properties_data@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "author": "The Servo Project Developers",
+      "bom-ref": "CycloneDxRef-Component-smallvec-1.15.2",
+      "description": "'Small vector' optimization: store up to a small number of items on the stack",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/smallvec/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/servo/rust-smallvec"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "smallvec",
+      "purl": "pkg:cargo/smallvec@1.15.2",
+      "type": "library",
+      "version": "1.15.2"
+    },
+    {
+      "author": "Alex Crichton <alex@alexcrichton.com>",
+      "bom-ref": "CycloneDxRef-Component-cfg-if-1.0.4",
+      "description": "A macro to ergonomically define an item depending on a large number of #[cfg]\nparameters. Structured like an if-else chain, the first matching branch is the\nitem that gets emitted.\n",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/cfg-if"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "cfg-if",
+      "purl": "pkg:cargo/cfg-if@1.0.4",
+      "type": "library",
+      "version": "1.0.4"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-itoa-1.0.18",
+      "description": "Fast integer primitive to string conversion",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/itoa"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/itoa"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "itoa",
+      "purl": "pkg:cargo/itoa@1.0.18",
+      "type": "library",
+      "version": "1.0.18"
+    },
+    {
+      "author": "Carl Lerche <me@carllerche.com>, Sean McArthur <sean@seanmonstar.com>",
+      "bom-ref": "CycloneDxRef-Component-bytes-1.12.1",
+      "description": "Types and traits for working with bytes",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/tokio-rs/bytes"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "bytes",
+      "purl": "pkg:cargo/bytes@1.12.1",
+      "type": "library",
+      "version": "1.12.1"
+    },
+    {
+      "author": "Carl Lerche <me@carllerche.com>",
+      "bom-ref": "CycloneDxRef-Component-slab-0.4.12",
+      "description": "Pre-allocated storage for a uniform data type",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/tokio-rs/slab"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "slab",
+      "purl": "pkg:cargo/slab@0.4.12",
+      "type": "library",
+      "version": "0.4.12"
+    },
+    {
+      "author": "The rust-url developers",
+      "bom-ref": "CycloneDxRef-Component-percent-encoding-2.3.2",
+      "description": "Percent encoding and decoding",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/servo/rust-url/"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "percent-encoding",
+      "purl": "pkg:cargo/percent-encoding@2.3.2",
+      "type": "library",
+      "version": "2.3.2"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows-sys-0.59.0",
+      "description": "Rust for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows-sys",
+      "purl": "pkg:cargo/windows-sys@0.59.0",
+      "type": "library",
+      "version": "0.59.0"
+    },
+    {
+      "author": "The wasm-bindgen Developers",
+      "bom-ref": "CycloneDxRef-Component-wasm-bindgen-macro-0.2.127",
+      "description": "Definition of the `#[wasm_bindgen]` attribute, an internal dependency\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/wasm-bindgen"
+        },
+        {
+          "type": "website",
+          "url": "https://wasm-bindgen.github.io/wasm-bindgen/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "wasm-bindgen-macro",
+      "purl": "pkg:cargo/wasm-bindgen-macro@0.2.127",
+      "type": "application",
+      "version": "0.2.127"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-typenum-1.20.1",
+      "description": "Typenum is a Rust library for type-level numbers evaluated at\n    compile time. It currently supports bits, unsigned integers, and signed\n    integers. It also provides a type-level array of type-level numbers, but its\n    implementation is incomplete.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/typenum"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/paholg/typenum"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "typenum",
+      "purl": "pkg:cargo/typenum@1.20.1",
+      "type": "library",
+      "version": "1.20.1"
+    },
+    {
+      "author": "The wasm-bindgen Developers",
+      "bom-ref": "CycloneDxRef-Component-wasm-bindgen-shared-0.2.127",
+      "description": "Shared support between wasm-bindgen and wasm-bindgen cli, an internal\ndependency.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/wasm-bindgen-shared"
+        },
+        {
+          "type": "website",
+          "url": "https://wasm-bindgen.github.io/wasm-bindgen/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "wasm-bindgen-shared",
+      "purl": "pkg:cargo/wasm-bindgen-shared@0.2.127",
+      "type": "library",
+      "version": "0.2.127"
+    },
+    {
+      "author": "Steven Fackler <sfackler@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-foreign-types-shared-0.1.1",
+      "description": "An internal crate used by foreign-types",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/sfackler/foreign-types"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "foreign-types-shared",
+      "purl": "pkg:cargo/foreign-types-shared@0.1.1",
+      "type": "library",
+      "version": "0.1.1"
+    },
+    {
+      "author": "The RustCrypto Project Developers",
+      "bom-ref": "CycloneDxRef-Component-zeroize-1.8.1",
+      "description": "Securely clear secrets from memory with a simple trait built on\nstable Rust primitives which guarantee memory is zeroed using an\noperation will not be 'optimized away' by the compiler.\nUses a portable pure Rust implementation that works everywhere,\neven WASM!\n",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/utils/tree/master/zeroize"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "zeroize",
+      "purl": "pkg:cargo/zeroize@1.8.1",
+      "type": "library",
+      "version": "1.8.1"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_aarch64_msvc-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_aarch64_msvc",
+      "purl": "pkg:cargo/windows_aarch64_msvc@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-pin-project-lite-0.2.17",
+      "description": "A lightweight version of pin-project written with declarative macros.\n",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/taiki-e/pin-project-lite"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "pin-project-lite",
+      "purl": "pkg:cargo/pin-project-lite@0.2.17",
+      "type": "library",
+      "version": "0.2.17"
+    },
+    {
+      "author": "Tokio Contributors <team@tokio.rs>",
+      "bom-ref": "CycloneDxRef-Component-tokio-1.48.0",
+      "description": "An event-driven, non-blocking I/O platform for writing asynchronous I/O\nbacked applications.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://tokio.rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/tokio-rs/tokio"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "tokio",
+      "purl": "pkg:cargo/tokio@1.48.0",
+      "type": "library",
+      "version": "1.48.0"
+    },
+    {
+      "author": "Tokio Contributors <team@tokio.rs>",
+      "bom-ref": "CycloneDxRef-Component-tokio-macros-2.6.1",
+      "description": "Tokio's proc macros.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://tokio.rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/tokio-rs/tokio"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "tokio-macros",
+      "purl": "pkg:cargo/tokio-macros@2.6.1",
+      "type": "application",
+      "version": "2.6.1"
+    },
+    {
+      "author": "The nix-rust Project Developers",
+      "bom-ref": "CycloneDxRef-Component-nix-0.29.0",
+      "description": "Rust friendly bindings to *nix APIs",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/nix-rust/nix"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "nix",
+      "purl": "pkg:cargo/nix@0.29.0",
+      "type": "library",
+      "version": "0.29.0"
+    },
+    {
+      "author": "KokaKiwi <kokakiwi@kokakiwi.net>",
+      "bom-ref": "CycloneDxRef-Component-hex-0.4.3",
+      "description": "Encoding and decoding data into/from hexadecimal representation.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/hex/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/KokaKiwi/rust-hex"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "hex",
+      "purl": "pkg:cargo/hex@0.4.3",
+      "type": "library",
+      "version": "0.4.3"
+    },
+    {
+      "author": "RustCrypto Developers",
+      "bom-ref": "CycloneDxRef-Component-crypto-common-0.1.7",
+      "description": "Common cryptographic traits",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/crypto-common"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/traits"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "crypto-common",
+      "purl": "pkg:cargo/crypto-common@0.1.7",
+      "type": "library",
+      "version": "0.1.7"
+    },
+    {
+      "author": "The Rust Project Developers",
+      "bom-ref": "CycloneDxRef-Component-bitflags-2.13.1",
+      "description": "A macro to generate structures which behave like bitflags.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/bitflags"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/bitflags/bitflags"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/bitflags/bitflags"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "bitflags",
+      "purl": "pkg:cargo/bitflags@2.13.1",
+      "type": "library",
+      "version": "2.13.1"
+    },
+    {
+      "author": "panicbit <panicbit.dev@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-custom_debug-0.6.2",
+      "description": "Derive Debug with a custom format per field",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/panicbit/custom_debug"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "custom_debug",
+      "purl": "pkg:cargo/custom_debug@0.6.2",
+      "type": "library",
+      "version": "0.6.2"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-task-0.3.34",
+      "description": "Tools for working with tasks.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-task",
+      "purl": "pkg:cargo/futures-task@0.3.34",
+      "type": "library",
+      "version": "0.3.34"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-io-0.3.34",
+      "description": "The `AsyncRead`, `AsyncWrite`, `AsyncSeek`, and `AsyncBufRead` traits for the futures-rs library.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-io",
+      "purl": "pkg:cargo/futures-io@0.3.34",
+      "type": "library",
+      "version": "0.3.34"
+    },
+    {
+      "author": "Alex Crichton <alex@alexcrichton.com>",
+      "bom-ref": "CycloneDxRef-Component-fnv-1.0.7",
+      "description": "Fowler–Noll–Vo hash function",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://doc.servo.org/fnv/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/servo/rust-fnv"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "fnv",
+      "purl": "pkg:cargo/fnv@1.0.7",
+      "type": "library",
+      "version": "1.0.7"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-rustversion-1.0.23",
+      "description": "Conditional compilation according to rustc compiler version",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/rustversion"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/rustversion"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "rustversion",
+      "purl": "pkg:cargo/rustversion@1.0.23",
+      "type": "application",
+      "version": "1.0.23"
+    },
+    {
+      "author": "Manish Goregaokar <manishsmail@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-zerofrom-derive-0.1.7",
+      "description": "Custom derive for the zerofrom crate",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "zerofrom-derive",
+      "purl": "pkg:cargo/zerofrom-derive@0.1.7",
+      "type": "application",
+      "version": "0.1.7"
+    },
+    {
+      "author": "Marvin Löbel <loebel.marvin@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-lazy_static-1.5.0",
+      "description": "A macro for declaring lazily evaluated statics in Rust.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/lazy_static"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang-nursery/lazy-static.rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "lazy_static",
+      "purl": "pkg:cargo/lazy_static@1.5.0",
+      "type": "library",
+      "version": "1.5.0"
+    },
+    {
+      "author": "RustCrypto Developers",
+      "bom-ref": "CycloneDxRef-Component-cpufeatures-0.2.17",
+      "description": "Lightweight runtime CPU feature detection for aarch64, loongarch64, and x86/x86_64 targets, \nwith no_std support and support for mobile targets including Android and iOS\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/cpufeatures"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/utils"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "cpufeatures",
+      "purl": "pkg:cargo/cpufeatures@0.2.17",
+      "type": "library",
+      "version": "0.2.17"
+    },
+    {
+      "author": "Aleksey Kladov <aleksey.kladov@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-once_cell-1.21.4",
+      "description": "Single assignment cells and lazy values.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/once_cell"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/matklad/once_cell"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "once_cell",
+      "purl": "pkg:cargo/once_cell@1.21.4",
+      "type": "library",
+      "version": "1.21.4"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_aarch64_gnullvm-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_aarch64_gnullvm",
+      "purl": "pkg:cargo/windows_aarch64_gnullvm@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-channel-0.3.34",
+      "description": "Channels for asynchronous communication using futures-rs.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-channel",
+      "purl": "pkg:cargo/futures-channel@0.3.34",
+      "type": "library",
+      "version": "0.3.34"
+    },
+    {
+      "author": "Steven Fackler <sfackler@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-openssl-0.10.81",
+      "description": "OpenSSL bindings",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-openssl/rust-openssl"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "name": "openssl",
+      "purl": "pkg:cargo/openssl@0.10.81",
+      "type": "library",
+      "version": "0.10.81"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-syn-2.0.119",
+      "description": "Parser for Rust source code",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/syn"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/syn"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "syn",
+      "purl": "pkg:cargo/syn@2.0.119",
+      "type": "library",
+      "version": "2.0.119"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-pin-project-internal-1.1.13",
+      "description": "Implementation detail of the `pin-project` crate.\n",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/taiki-e/pin-project"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "pin-project-internal",
+      "purl": "pkg:cargo/pin-project-internal@1.1.13",
+      "type": "application",
+      "version": "1.1.13"
+    },
+    {
+      "author": "RustCrypto Developers",
+      "bom-ref": "CycloneDxRef-Component-sha2-0.10.8",
+      "description": "Pure Rust implementation of the SHA-2 hash function family\nincluding SHA-224, SHA-256, SHA-384, and SHA-512.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/sha2"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/hashes"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "sha2",
+      "purl": "pkg:cargo/sha2@0.10.8",
+      "type": "library",
+      "version": "0.10.8"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-litemap-0.8.3",
+      "description": "A key-value Map implementation based on a flat, sorted Vec.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/litemap"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "litemap",
+      "purl": "pkg:cargo/litemap@0.8.3",
+      "type": "library",
+      "version": "0.8.3"
+    },
+    {
+      "author": "Ted Driggs <ted.driggs@outlook.com>",
+      "bom-ref": "CycloneDxRef-Component-darling-0.20.11",
+      "description": "A proc-macro library for reading attributes into structs when\nimplementing custom derives.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/darling/0.20.11"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/TedDriggs/darling"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "darling",
+      "purl": "pkg:cargo/darling@0.20.11",
+      "type": "library",
+      "version": "0.20.11"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_i686_gnu-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_i686_gnu",
+      "purl": "pkg:cargo/windows_i686_gnu@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "panicbit <panicbit.dev@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-custom_debug_derive-0.6.2",
+      "description": "Derive Debug with a custom format per field",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/panicbit/custom_debug"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "custom_debug_derive",
+      "purl": "pkg:cargo/custom_debug_derive@0.6.2",
+      "type": "application",
+      "version": "0.6.2"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_x86_64_gnu-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_x86_64_gnu",
+      "purl": "pkg:cargo/windows_x86_64_gnu@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-syn-3.0.4",
+      "description": "Parser for Rust source code",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/syn"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/syn"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "syn",
+      "purl": "pkg:cargo/syn@3.0.4",
+      "type": "library",
+      "version": "3.0.4"
+    },
+    {
+      "author": "Yevhenii Reizner <razrfalcon@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-roxmltree-0.20.0",
+      "description": "Represent an XML as a read-only tree.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/roxmltree/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/RazrFalcon/roxmltree"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "roxmltree",
+      "purl": "pkg:cargo/roxmltree@0.20.0",
+      "type": "library",
+      "version": "0.20.0"
+    },
+    {
+      "author": "David Henningsson <diwic@ubuntu.com>",
+      "bom-ref": "CycloneDxRef-Component-libdbus-sys-0.2.7",
+      "description": "FFI bindings to libdbus.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/libdbus-sys"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/diwic/dbus-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "libdbus-sys",
+      "purl": "pkg:cargo/libdbus-sys@0.2.7",
+      "type": "library",
+      "version": "0.2.7"
+    },
+    {
+      "author": "RustCrypto Developers",
+      "bom-ref": "CycloneDxRef-Component-block-buffer-0.10.4",
+      "description": "Buffer type for block processing of data",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/block-buffer"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/utils"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "block-buffer",
+      "purl": "pkg:cargo/block-buffer@0.10.4",
+      "type": "library",
+      "version": "0.10.4"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-pin-project-1.1.13",
+      "description": "A crate for safe and ergonomic pin-projection.\n",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/taiki-e/pin-project"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "pin-project",
+      "purl": "pkg:cargo/pin-project@1.1.13",
+      "type": "library",
+      "version": "1.1.13"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-heck-0.5.0",
+      "description": "heck is a case conversion library.",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/withoutboats/heck"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "heck",
+      "purl": "pkg:cargo/heck@0.5.0",
+      "type": "library",
+      "version": "0.5.0"
+    },
+    {
+      "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-serde_derive-1.0.203",
+      "description": "Macros 1.1 implementation of #[derive(Serialize, Deserialize)]",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://serde.rs/derive.html"
+        },
+        {
+          "type": "website",
+          "url": "https://serde.rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/serde-rs/serde"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "serde_derive",
+      "purl": "pkg:cargo/serde_derive@1.0.203",
+      "type": "application",
+      "version": "1.0.203"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-zerovec-0.11.8",
+      "description": "Zero-copy vector backed by a byte array",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "zerovec",
+      "purl": "pkg:cargo/zerovec@0.11.8",
+      "type": "library",
+      "version": "0.11.8"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-zerofrom-0.1.8",
+      "description": "ZeroFrom trait for constructing",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "zerofrom",
+      "purl": "pkg:cargo/zerofrom@0.1.8",
+      "type": "library",
+      "version": "0.1.8"
+    },
+    {
+      "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
+      "bom-ref": "CycloneDxRef-Component-memchr-2.8.3",
+      "description": "Provides extremely fast (uses SIMD on x86_64, aarch64 and wasm32) routines for\n1, 2 or 3 byte search and single substring search.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/memchr/"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/BurntSushi/memchr"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/BurntSushi/memchr"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unlicense OR MIT"
+        }
+      ],
+      "name": "memchr",
+      "purl": "pkg:cargo/memchr@2.8.3",
+      "type": "library",
+      "version": "2.8.3"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-potential_utf-0.1.6",
+      "description": "Unvalidated string and character types",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "potential_utf",
+      "purl": "pkg:cargo/potential_utf@0.1.6",
+      "type": "library",
+      "version": "0.1.6"
+    },
+    {
+      "author": "The rust-url developers",
+      "bom-ref": "CycloneDxRef-Component-idna_adapter-1.2.2",
+      "description": "Back end adapter for idna",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/idna_adapter/latest/idna_adapter/"
+        },
+        {
+          "type": "website",
+          "url": "https://docs.rs/crate/idna_adapter/latest"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/hsivonen/idna_adapter"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "idna_adapter",
+      "purl": "pkg:cargo/idna_adapter@1.2.2",
+      "type": "library",
+      "version": "1.2.2"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-core-0.3.34",
+      "description": "The core traits and types in for the `futures` library.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-core",
+      "purl": "pkg:cargo/futures-core@0.3.34",
+      "type": "library",
+      "version": "0.3.34"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-util-0.3.34",
+      "description": "Common utilities and extension traits for the futures-rs library.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-util",
+      "purl": "pkg:cargo/futures-util@0.3.34",
+      "type": "library",
+      "version": "0.3.34"
+    },
+    {
+      "author": "The Rust Project Developers",
+      "bom-ref": "CycloneDxRef-Component-num-traits-0.2.19",
+      "description": "Numeric traits for generic mathematics",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/num-traits"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/rust-num/num-traits"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-num/num-traits"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "num-traits",
+      "purl": "pkg:cargo/num-traits@0.2.19",
+      "type": "library",
+      "version": "0.2.19"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_x86_64_msvc-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_x86_64_msvc",
+      "purl": "pkg:cargo/windows_x86_64_msvc@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "Ashley Mannix<ashleymannix@live.com.au>, Dylan DPC<dylan.dpc@gmail.com>, Hunar Roop Kahlon<hunar.roop@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-uuid-1.26.0",
+      "description": "A library to generate and parse UUIDs.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/uuid"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/uuid-rs/uuid"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/uuid-rs/uuid"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "uuid",
+      "purl": "pkg:cargo/uuid@1.26.0",
+      "type": "library",
+      "version": "1.26.0"
+    },
+    {
+      "author": "The wasm-bindgen Developers",
+      "bom-ref": "CycloneDxRef-Component-wasm-bindgen-0.2.127",
+      "description": "Easy support for interacting between JS and Rust.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/wasm-bindgen"
+        },
+        {
+          "type": "website",
+          "url": "https://wasm-bindgen.github.io/wasm-bindgen"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/wasm-bindgen/wasm-bindgen"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "wasm-bindgen",
+      "purl": "pkg:cargo/wasm-bindgen@0.2.127",
+      "type": "library",
+      "version": "0.2.127"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-0.3.31",
+      "description": "An implementation of futures and streams featuring zero allocations,\ncomposability, and iterator-like interfaces.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures",
+      "purl": "pkg:cargo/futures@0.3.31",
+      "type": "library",
+      "version": "0.3.31"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-windows-sys-0.61.2",
+      "description": "Rust for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows-sys",
+      "purl": "pkg:cargo/windows-sys@0.61.2",
+      "type": "library",
+      "version": "0.61.2"
+    },
+    {
+      "author": "Tokio Contributors <team@tokio.rs>",
+      "bom-ref": "CycloneDxRef-Component-tokio-stream-0.1.19",
+      "description": "Utilities to work with `Stream` and `tokio`.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://tokio.rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/tokio-rs/tokio"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "tokio-stream",
+      "purl": "pkg:cargo/tokio-stream@0.1.19",
+      "type": "library",
+      "version": "0.1.19"
+    },
+    {
+      "author": "Martin Algesten <martin@algesten.se>, Jacob Hoffman-Andrews <ureq@hoffman-andrews.com>",
+      "bom-ref": "CycloneDxRef-Component-ureq-2.9.1",
+      "description": "Simple, safe HTTP client",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/algesten/ureq"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "ureq",
+      "purl": "pkg:cargo/ureq@2.9.1",
+      "type": "library",
+      "version": "2.9.1"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
+      "bom-ref": "CycloneDxRef-Component-proc-macro2-1.0.107",
+      "description": "A substitute implementation of the compiler's `proc_macro` API to decouple token-based libraries from the procedural macro use case.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/proc-macro2"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/proc-macro2"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "proc-macro2",
+      "purl": "pkg:cargo/proc-macro2@1.0.107",
+      "type": "library",
+      "version": "1.0.107"
+    },
+    {
+      "author": "Ted Driggs <ted.driggs@outlook.com>",
+      "bom-ref": "CycloneDxRef-Component-ident_case-1.0.1",
+      "description": "Utility for applying case rules to Rust identifiers.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/ident_case/1.0.1"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/TedDriggs/ident_case"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "ident_case",
+      "purl": "pkg:cargo/ident_case@1.0.1",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-quote-1.0.47",
+      "description": "Quasi-quoting macro quote!(...)",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/quote/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/quote"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "quote",
+      "purl": "pkg:cargo/quote@1.0.47",
+      "type": "library",
+      "version": "1.0.47"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-futures-executor-0.3.34",
+      "description": "Executors for asynchronous tasks based on the futures-rs library.\n",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://rust-lang.github.io/futures-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/futures-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "futures-executor",
+      "purl": "pkg:cargo/futures-executor@0.3.34",
+      "type": "library",
+      "version": "0.3.34"
+    },
+    {
+      "author": "svartalf <self@svartalf.info>",
+      "bom-ref": "CycloneDxRef-Component-macaddr-1.0.1",
+      "description": "MAC address types",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/svartalf/rust-macaddr"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "macaddr",
+      "purl": "pkg:cargo/macaddr@1.0.1",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-openssl-macros-0.1.1",
+      "description": "Internal macros used by the openssl crate.",
+      "externalReferences": [],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "openssl-macros",
+      "purl": "pkg:cargo/openssl-macros@0.1.1",
+      "type": "application",
+      "version": "0.1.1"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-icu_locale_core-2.3.0",
+      "description": "API for managing Unicode Language and Locale Identifiers",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "icu_locale_core",
+      "purl": "pkg:cargo/icu_locale_core@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "author": "Robert Grosse <n210241048576@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-stable_deref_trait-1.2.1",
+      "description": "An unsafe marker trait for types like Box and Rc that dereference to a stable address even when moved, and hence can be used with libraries such as owning_ref and rental.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/stable_deref_trait/1.2.1/stable_deref_trait"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/storyyeller/stable_deref_trait"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "stable_deref_trait",
+      "purl": "pkg:cargo/stable_deref_trait@1.2.1",
+      "type": "library",
+      "version": "1.2.1"
+    },
+    {
+      "author": "Nika Layzell <nika@thelayzells.com>",
+      "bom-ref": "CycloneDxRef-Component-synstructure-0.13.2",
+      "description": "Helper methods and macros for custom derives",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/synstructure"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/mystor/synstructure"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "synstructure",
+      "purl": "pkg:cargo/synstructure@0.13.2",
+      "type": "library",
+      "version": "0.13.2"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-windows-link-0.2.1",
+      "description": "Linking for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows-link",
+      "purl": "pkg:cargo/windows-link@0.2.1",
+      "type": "library",
+      "version": "0.2.1"
+    },
+    {
+      "author": "Carl Lerche <me@carllerche.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>, Tokio Contributors <team@tokio.rs>",
+      "bom-ref": "CycloneDxRef-Component-mio-1.2.2",
+      "description": "Lightweight non-blocking I/O.",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://github.com/tokio-rs/mio"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/tokio-rs/mio"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "mio",
+      "purl": "pkg:cargo/mio@1.2.2",
+      "type": "library",
+      "version": "1.2.2"
+    },
+    {
+      "author": "Nick Fitzgerald <fitzgen@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-bumpalo-3.20.3",
+      "description": "A fast bump allocation arena for Rust.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/bumpalo"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/fitzgen/bumpalo"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "bumpalo",
+      "purl": "pkg:cargo/bumpalo@3.20.3",
+      "type": "library",
+      "version": "3.20.3"
+    },
+    {
+      "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-serde_json-1.0.117",
+      "description": "A JSON serialization file format",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/serde_json"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/serde-rs/json"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "serde_json",
+      "purl": "pkg:cargo/serde_json@1.0.117",
+      "type": "library",
+      "version": "1.0.117"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-icu_normalizer-2.3.0",
+      "description": "API for normalizing text into Unicode Normalization Forms",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "icu_normalizer",
+      "purl": "pkg:cargo/icu_normalizer@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "author": "David Henningsson <diwic@ubuntu.com>",
+      "bom-ref": "CycloneDxRef-Component-dbus-0.9.10",
+      "description": "Bindings to D-Bus, which is a bus commonly used on Linux for inter-process communication.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/dbus"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/diwic/dbus-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "dbus",
+      "purl": "pkg:cargo/dbus@0.9.10",
+      "type": "library",
+      "version": "0.9.10"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-icu_normalizer_data-2.3.0",
+      "description": "Data for the icu_normalizer crate",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "icu_normalizer_data",
+      "purl": "pkg:cargo/icu_normalizer_data@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "author": "Sebastian Urban <surban@surban.net>, BlueR contributors, Attila Dusnoki <adusnoki@inf.u-szeged.hu>, Ben Stern <bstern@fortian.com>, Dejan Bosanac <dbosanac@redhat.com>",
+      "bom-ref": "CycloneDxRef-Component-bluer-0.17.4",
+      "description": "BlueR: official Rust interface to the Linux Bluetooth protocol stack (BlueZ)",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bluez/bluer"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "BSD-2-Clause"
+        }
+      ],
+      "name": "bluer",
+      "purl": "pkg:cargo/bluer@0.17.4",
+      "type": "library",
+      "version": "0.17.4"
+    },
+    {
+      "author": "David Henningsson <diwic@ubuntu.com>",
+      "bom-ref": "CycloneDxRef-Component-dbus-tokio-0.7.6",
+      "description": "Makes it possible to use Tokio with D-Bus, which is a bus commonly used on Linux for inter-process communication.",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "http://docs.rs/dbus-tokio"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/diwic/dbus-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "name": "dbus-tokio",
+      "purl": "pkg:cargo/dbus-tokio@0.7.6",
+      "type": "library",
+      "version": "0.7.6"
+    },
+    {
+      "author": "",
+      "bom-ref": "CycloneDxRef-Component-libc-0.2.189",
+      "description": "Raw FFI bindings to platform libraries like libc.",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/libc"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "libc",
+      "purl": "pkg:cargo/libc@0.2.189",
+      "type": "library",
+      "version": "0.2.189"
+    },
+    {
+      "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-serde-1.0.203",
+      "description": "A generic serialization/deserialization framework",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/serde"
+        },
+        {
+          "type": "website",
+          "url": "https://serde.rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/serde-rs/serde"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "serde",
+      "purl": "pkg:cargo/serde@1.0.203",
+      "type": "library",
+      "version": "1.0.203"
+    },
+    {
+      "author": "Manish Goregaokar <manishsmail@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-zerovec-derive-0.11.6",
+      "description": "Custom derive for the zerovec crate",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "zerovec-derive",
+      "purl": "pkg:cargo/zerovec-derive@0.11.6",
+      "type": "application",
+      "version": "0.11.6"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-icu_properties-2.3.0",
+      "description": "Definitions for Unicode properties",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "icu_properties",
+      "purl": "pkg:cargo/icu_properties@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-writeable-0.6.4",
+      "description": "A more efficient alternative to fmt::Display",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "writeable",
+      "purl": "pkg:cargo/writeable@0.6.4",
+      "type": "library",
+      "version": "0.6.4"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_x86_64_gnullvm-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_x86_64_gnullvm",
+      "purl": "pkg:cargo/windows_x86_64_gnullvm@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "Bartłomiej Kamiński <fizyk20@gmail.com>, Aaron Trent <novacrazy@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-generic-array-0.14.7",
+      "description": "Generic types implementing functionality of arrays",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "http://fizyk20.github.io/generic-array/generic_array/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/fizyk20/generic-array.git"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "generic-array",
+      "purl": "pkg:cargo/generic-array@0.14.7",
+      "type": "library",
+      "version": "0.14.7"
+    },
+    {
+      "author": "Microsoft",
+      "bom-ref": "CycloneDxRef-Component-windows_i686_gnullvm-0.52.6",
+      "description": "Import lib for Windows",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/windows-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "windows_i686_gnullvm",
+      "purl": "pkg:cargo/windows_i686_gnullvm@0.52.6",
+      "type": "library",
+      "version": "0.52.6"
+    },
+    {
+      "author": "Danny Guo <danny@dannyguo.com>, maxbachmann <oss@maxbachmann.de>",
+      "bom-ref": "CycloneDxRef-Component-strsim-0.11.1",
+      "description": "Implementations of string similarity metrics. Includes Hamming, Levenshtein,\nOSA, Damerau-Levenshtein, Jaro, Jaro-Winkler, and Sørensen-Dice.\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/strsim/"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/rapidfuzz/strsim-rs"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/rapidfuzz/strsim-rs"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "name": "strsim",
+      "purl": "pkg:cargo/strsim@0.11.1",
+      "type": "library",
+      "version": "0.11.1"
+    },
+    {
+      "author": "Jane Lusby <jlusby@yaah.dev>",
+      "bom-ref": "CycloneDxRef-Component-displaydoc-0.2.7",
+      "description": "A derive macro for implementing the display Trait via a doc comment and string interpolation\n",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/displaydoc"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/yaahc/displaydoc"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/yaahc/displaydoc"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "displaydoc",
+      "purl": "pkg:cargo/displaydoc@0.2.7",
+      "type": "application",
+      "version": "0.2.7"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-tinystr-0.8.4",
+      "description": "A small ASCII-only bounded length string representation.",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "tinystr",
+      "purl": "pkg:cargo/tinystr@0.8.4",
+      "type": "library",
+      "version": "0.8.4"
+    },
+    {
+      "author": "Manish Goregaokar <manishsmail@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-yoke-derive-0.8.2",
+      "description": "Custom derive for the yoke crate",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "yoke-derive",
+      "purl": "pkg:cargo/yoke-derive@0.8.2",
+      "type": "application",
+      "version": "0.8.2"
+    },
+    {
+      "author": "The ICU4X Project Developers",
+      "bom-ref": "CycloneDxRef-Component-zerotrie-0.2.5",
+      "description": "A data structure that efficiently maps strings to integers",
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://icu4x.unicode.org"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-org/icu4x"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Unicode-3.0"
+        }
+      ],
+      "name": "zerotrie",
+      "purl": "pkg:cargo/zerotrie@0.2.5",
+      "type": "library",
+      "version": "0.2.5"
+    },
+    {
+      "author": "Steven Fackler <sfackler@gmail.com>",
+      "bom-ref": "CycloneDxRef-Component-foreign-types-0.3.2",
+      "description": "A framework for Rust wrappers over C APIs",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/sfackler/foreign-types"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "name": "foreign-types",
+      "purl": "pkg:cargo/foreign-types@0.3.2",
+      "type": "library",
+      "version": "0.3.2"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107"
+      ],
+      "ref": "CycloneDxRef-Component-quote-1.0.47"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-unicode-ident-1.0.24"
+      ],
+      "ref": "CycloneDxRef-Component-syn-2.0.119"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-quote-1.0.47"
+      ],
+      "ref": "CycloneDxRef-Component-synstructure-0.13.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-typenum-1.20.1"
+      ],
+      "ref": "CycloneDxRef-Component-generic-array-0.14.7"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-writeable-0.6.4",
+        "CycloneDxRef-Component-litemap-0.8.3",
+        "CycloneDxRef-Component-tinystr-0.8.4",
+        "CycloneDxRef-Component-displaydoc-0.2.7",
+        "CycloneDxRef-Component-zerovec-0.11.8"
+      ],
+      "ref": "CycloneDxRef-Component-icu_locale_core-2.3.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-custom_debug_derive-0.6.2"
+      ],
+      "ref": "CycloneDxRef-Component-custom_debug-0.6.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-windows-link-0.2.1"
+      ],
+      "ref": "CycloneDxRef-Component-windows-sys-0.61.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-futures-core-0.3.34",
+        "CycloneDxRef-Component-futures-channel-0.3.34",
+        "CycloneDxRef-Component-futures-task-0.3.34",
+        "CycloneDxRef-Component-futures-util-0.3.34",
+        "CycloneDxRef-Component-futures-executor-0.3.34",
+        "CycloneDxRef-Component-futures-sink-0.3.34",
+        "CycloneDxRef-Component-futures-io-0.3.34"
+      ],
+      "ref": "CycloneDxRef-Component-futures-0.3.31"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-tokio-1.48.0",
+        "CycloneDxRef-Component-pin-project-lite-0.2.17",
+        "CycloneDxRef-Component-futures-core-0.3.34"
+      ],
+      "ref": "CycloneDxRef-Component-tokio-stream-0.1.19"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-wasm-bindgen-0.2.127",
+        "CycloneDxRef-Component-futures-util-0.3.34",
+        "CycloneDxRef-Component-cfg-if-1.0.4"
+      ],
+      "ref": "CycloneDxRef-Component-js-sys-0.3.104"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-smallvec-1.15.2",
+        "CycloneDxRef-Component-idna_adapter-1.2.2",
+        "CycloneDxRef-Component-utf8_iter-1.0.4"
+      ],
+      "ref": "CycloneDxRef-Component-idna-1.1.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-wasm-bindgen-macro-0.2.127",
+        "CycloneDxRef-Component-once_cell-1.21.4",
+        "CycloneDxRef-Component-wasm-bindgen-shared-0.2.127",
+        "CycloneDxRef-Component-cfg-if-1.0.4"
+      ],
+      "ref": "CycloneDxRef-Component-wasm-bindgen-0.2.127"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-typenum-1.20.1",
+        "CycloneDxRef-Component-generic-array-0.14.7"
+      ],
+      "ref": "CycloneDxRef-Component-crypto-common-0.1.7"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-tokio-1.48.0",
+        "CycloneDxRef-Component-dbus-0.9.10"
+      ],
+      "ref": "CycloneDxRef-Component-dbus-tokio-0.7.6"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-quote-1.0.47"
+      ],
+      "ref": "CycloneDxRef-Component-tokio-macros-2.6.1"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-url-2.5.8",
+        "CycloneDxRef-Component-base64-0.21.7",
+        "CycloneDxRef-Component-once_cell-1.21.4",
+        "CycloneDxRef-Component-log-0.4.34"
+      ],
+      "ref": "CycloneDxRef-Component-ureq-2.9.1"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-zerofrom-derive-0.1.7"
+      ],
+      "ref": "CycloneDxRef-Component-zerofrom-0.1.8"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-bitflags-2.13.1",
+        "CycloneDxRef-Component-cfg-if-1.0.4",
+        "CycloneDxRef-Component-libc-0.2.189"
+      ],
+      "ref": "CycloneDxRef-Component-nix-0.29.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-heck-0.5.0",
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-rustversion-1.0.23",
+        "CycloneDxRef-Component-quote-1.0.47"
+      ],
+      "ref": "CycloneDxRef-Component-strum_macros-0.26.4"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-strum-0.26.3",
+        "CycloneDxRef-Component-uuid-1.26.0",
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-num-traits-0.2.19",
+        "CycloneDxRef-Component-log-0.4.34",
+        "CycloneDxRef-Component-num-derive-0.4.2",
+        "CycloneDxRef-Component-lazy_static-1.5.0",
+        "CycloneDxRef-Component-displaydoc-0.2.7",
+        "CycloneDxRef-Component-futures-0.3.31",
+        "CycloneDxRef-Component-macaddr-1.0.1",
+        "CycloneDxRef-Component-dbus-0.9.10",
+        "CycloneDxRef-Component-dbus-tokio-0.7.6",
+        "CycloneDxRef-Component-pin-project-1.1.13",
+        "CycloneDxRef-Component-dbus-crossroads-0.5.3",
+        "CycloneDxRef-Component-nix-0.29.0",
+        "CycloneDxRef-Component-tokio-stream-0.1.19",
+        "CycloneDxRef-Component-custom_debug-0.6.2",
+        "CycloneDxRef-Component-tokio-1.48.0",
+        "CycloneDxRef-Component-hex-0.4.3"
+      ],
+      "ref": "CycloneDxRef-Component-bluer-0.17.4"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-darling_core-0.20.11"
+      ],
+      "ref": "CycloneDxRef-Component-darling_macro-0.20.11"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-unicode-ident-1.0.24",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-proc-macro2-1.0.107"
+      ],
+      "ref": "CycloneDxRef-Component-syn-3.0.4"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-quote-1.0.47"
+      ],
+      "ref": "CycloneDxRef-Component-openssl-macros-0.1.1"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-generic-array-0.14.7"
+      ],
+      "ref": "CycloneDxRef-Component-block-buffer-0.10.4"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-potential_utf-0.1.6",
+        "CycloneDxRef-Component-displaydoc-0.2.7",
+        "CycloneDxRef-Component-zerofrom-0.1.8",
+        "CycloneDxRef-Component-zerovec-0.11.8",
+        "CycloneDxRef-Component-yoke-0.8.3",
+        "CycloneDxRef-Component-utf8_iter-1.0.4"
+      ],
+      "ref": "CycloneDxRef-Component-icu_collections-2.3.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-ident_case-1.0.1",
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-fnv-1.0.7",
+        "CycloneDxRef-Component-strsim-0.11.1"
+      ],
+      "ref": "CycloneDxRef-Component-darling_core-0.20.11"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-windows-sys-0.59.0",
+        "CycloneDxRef-Component-futures-util-0.3.34",
+        "CycloneDxRef-Component-libdbus-sys-0.2.7",
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-futures-channel-0.3.34"
+      ],
+      "ref": "CycloneDxRef-Component-dbus-0.9.10"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-futures-task-0.3.34",
+        "CycloneDxRef-Component-futures-core-0.3.34",
+        "CycloneDxRef-Component-futures-util-0.3.34"
+      ],
+      "ref": "CycloneDxRef-Component-futures-executor-0.3.34"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-unicode-ident-1.0.24"
+      ],
+      "ref": "CycloneDxRef-Component-wasm-bindgen-shared-0.2.127"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-displaydoc-0.2.7",
+        "CycloneDxRef-Component-yoke-0.8.3",
+        "CycloneDxRef-Component-zerofrom-0.1.8"
+      ],
+      "ref": "CycloneDxRef-Component-zerotrie-0.2.5"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-r-efi-6.0.0",
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-cfg-if-1.0.4"
+      ],
+      "ref": "CycloneDxRef-Component-getrandom-0.4.3"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-syn-3.0.4",
+        "CycloneDxRef-Component-quote-1.0.47"
+      ],
+      "ref": "CycloneDxRef-Component-zerovec-derive-0.11.6"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-icu_properties-2.3.0",
+        "CycloneDxRef-Component-icu_normalizer-2.3.0"
+      ],
+      "ref": "CycloneDxRef-Component-idna_adapter-1.2.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-writeable-0.6.4",
+        "CycloneDxRef-Component-zerovec-0.11.8",
+        "CycloneDxRef-Component-zerotrie-0.2.5",
+        "CycloneDxRef-Component-yoke-0.8.3",
+        "CycloneDxRef-Component-icu_locale_core-2.3.0",
+        "CycloneDxRef-Component-displaydoc-0.2.7",
+        "CycloneDxRef-Component-zerofrom-0.1.8"
+      ],
+      "ref": "CycloneDxRef-Component-icu_provider-2.3.1"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-syn-3.0.4",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-proc-macro2-1.0.107"
+      ],
+      "ref": "CycloneDxRef-Component-futures-macro-0.3.34"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-windows-sys-0.61.2"
+      ],
+      "ref": "CycloneDxRef-Component-socket2-0.6.5"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-cpufeatures-0.2.17",
+        "CycloneDxRef-Component-cfg-if-1.0.4",
+        "CycloneDxRef-Component-digest-0.10.7"
+      ],
+      "ref": "CycloneDxRef-Component-sha2-0.10.8"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-libc-0.2.189"
+      ],
+      "ref": "CycloneDxRef-Component-openssl-sys-0.9.117"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-pin-project-internal-1.1.13"
+      ],
+      "ref": "CycloneDxRef-Component-pin-project-1.1.13"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-openssl-sys-0.9.117",
+        "CycloneDxRef-Component-cfg-if-1.0.4",
+        "CycloneDxRef-Component-bitflags-2.13.1",
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-foreign-types-0.3.2",
+        "CycloneDxRef-Component-openssl-macros-0.1.1"
+      ],
+      "ref": "CycloneDxRef-Component-openssl-0.10.81"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-syn-3.0.4"
+      ],
+      "ref": "CycloneDxRef-Component-displaydoc-0.2.7"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-libc-0.2.189"
+      ],
+      "ref": "CycloneDxRef-Component-cpufeatures-0.2.17"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-crypto-common-0.1.7",
+        "CycloneDxRef-Component-block-buffer-0.10.4"
+      ],
+      "ref": "CycloneDxRef-Component-digest-0.10.7"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-percent-encoding-2.3.2"
+      ],
+      "ref": "CycloneDxRef-Component-form_urlencoded-1.2.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-synstructure-0.13.2",
+        "CycloneDxRef-Component-darling-0.20.11",
+        "CycloneDxRef-Component-syn-2.0.119"
+      ],
+      "ref": "CycloneDxRef-Component-custom_debug_derive-0.6.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-bumpalo-3.20.3",
+        "CycloneDxRef-Component-wasm-bindgen-shared-0.2.127",
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-syn-2.0.119"
+      ],
+      "ref": "CycloneDxRef-Component-wasm-bindgen-macro-support-0.2.127"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-windows-targets-0.52.6"
+      ],
+      "ref": "CycloneDxRef-Component-windows-sys-0.59.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-displaydoc-0.2.7",
+        "CycloneDxRef-Component-icu_collections-2.3.0",
+        "CycloneDxRef-Component-zerotrie-0.2.5",
+        "CycloneDxRef-Component-icu_properties_data-2.3.0",
+        "CycloneDxRef-Component-icu_locale_core-2.3.0",
+        "CycloneDxRef-Component-icu_provider-2.3.1",
+        "CycloneDxRef-Component-zerovec-0.11.8"
+      ],
+      "ref": "CycloneDxRef-Component-icu_properties-2.3.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-synstructure-0.13.2",
+        "CycloneDxRef-Component-syn-2.0.119"
+      ],
+      "ref": "CycloneDxRef-Component-zerofrom-derive-0.1.7"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-unicode-ident-1.0.24"
+      ],
+      "ref": "CycloneDxRef-Component-proc-macro2-1.0.107"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-memchr-2.8.3",
+        "CycloneDxRef-Component-futures-task-0.3.34",
+        "CycloneDxRef-Component-futures-channel-0.3.34",
+        "CycloneDxRef-Component-futures-io-0.3.34",
+        "CycloneDxRef-Component-slab-0.4.12",
+        "CycloneDxRef-Component-futures-sink-0.3.34",
+        "CycloneDxRef-Component-futures-core-0.3.34",
+        "CycloneDxRef-Component-futures-macro-0.3.34",
+        "CycloneDxRef-Component-pin-project-lite-0.2.17"
+      ],
+      "ref": "CycloneDxRef-Component-futures-util-0.3.34"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-serde_derive-1.0.203"
+      ],
+      "ref": "CycloneDxRef-Component-serde-1.0.203"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-futures-sink-0.3.34",
+        "CycloneDxRef-Component-futures-core-0.3.34"
+      ],
+      "ref": "CycloneDxRef-Component-futures-channel-0.3.34"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-dbus-0.9.10"
+      ],
+      "ref": "CycloneDxRef-Component-dbus-crossroads-0.5.3"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-synstructure-0.13.2",
+        "CycloneDxRef-Component-quote-1.0.47"
+      ],
+      "ref": "CycloneDxRef-Component-yoke-derive-0.8.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-zerovec-0.11.8"
+      ],
+      "ref": "CycloneDxRef-Component-potential_utf-0.1.6"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-getrandom-0.4.3",
+        "CycloneDxRef-Component-wasm-bindgen-0.2.127",
+        "CycloneDxRef-Component-js-sys-0.3.104"
+      ],
+      "ref": "CycloneDxRef-Component-uuid-1.26.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-darling_core-0.20.11",
+        "CycloneDxRef-Component-darling_macro-0.20.11"
+      ],
+      "ref": "CycloneDxRef-Component-darling-0.20.11"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-proc-macro2-1.0.107"
+      ],
+      "ref": "CycloneDxRef-Component-serde_derive-1.0.203"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-serde-1.0.203",
+        "CycloneDxRef-Component-percent-encoding-2.3.2",
+        "CycloneDxRef-Component-idna-1.1.0",
+        "CycloneDxRef-Component-form_urlencoded-1.2.2"
+      ],
+      "ref": "CycloneDxRef-Component-url-2.5.8"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-windows_x86_64_msvc-0.52.6",
+        "CycloneDxRef-Component-windows_x86_64_gnullvm-0.52.6",
+        "CycloneDxRef-Component-windows_x86_64_gnu-0.52.6",
+        "CycloneDxRef-Component-windows_aarch64_gnullvm-0.52.6",
+        "CycloneDxRef-Component-windows_i686_gnullvm-0.52.6",
+        "CycloneDxRef-Component-windows_aarch64_msvc-0.52.6",
+        "CycloneDxRef-Component-windows_i686_gnu-0.52.6",
+        "CycloneDxRef-Component-windows_i686_msvc-0.52.6"
+      ],
+      "ref": "CycloneDxRef-Component-windows-targets-0.52.6"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-tokio-macros-2.6.1",
+        "CycloneDxRef-Component-bytes-1.12.1",
+        "CycloneDxRef-Component-windows-sys-0.61.2",
+        "CycloneDxRef-Component-socket2-0.6.5",
+        "CycloneDxRef-Component-pin-project-lite-0.2.17",
+        "CycloneDxRef-Component-mio-1.2.2",
+        "CycloneDxRef-Component-libc-0.2.189"
+      ],
+      "ref": "CycloneDxRef-Component-tokio-1.48.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-icu_provider-2.3.1",
+        "CycloneDxRef-Component-icu_properties-2.3.0",
+        "CycloneDxRef-Component-icu_collections-2.3.0",
+        "CycloneDxRef-Component-zerovec-0.11.8",
+        "CycloneDxRef-Component-smallvec-1.15.2",
+        "CycloneDxRef-Component-icu_normalizer_data-2.3.0"
+      ],
+      "ref": "CycloneDxRef-Component-icu_normalizer-2.3.0"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-syn-2.0.119",
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-proc-macro2-1.0.107"
+      ],
+      "ref": "CycloneDxRef-Component-num-derive-0.4.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-roxmltree-0.20.0",
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-dbus-0.9.10",
+        "CycloneDxRef-Component-bluer-0.17.4",
+        "CycloneDxRef-Component-serde-1.0.203",
+        "CycloneDxRef-Component-zeroize-1.8.1",
+        "CycloneDxRef-Component-tokio-1.48.0",
+        "CycloneDxRef-Component-sha2-0.10.8",
+        "CycloneDxRef-Component-url-2.5.8",
+        "CycloneDxRef-Component-ureq-2.9.1",
+        "CycloneDxRef-Component-serde_json-1.0.117",
+        "CycloneDxRef-Component-openssl-0.10.81",
+        "CycloneDxRef-Component-futures-0.3.31"
+      ],
+      "ref": "CycloneDxRef-Component-jbl-aura-link-0.5.0-alpha.1"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-libc-0.2.189",
+        "CycloneDxRef-Component-wasi-0.11.1+wasi-snapshot-preview1",
+        "CycloneDxRef-Component-windows-sys-0.61.2"
+      ],
+      "ref": "CycloneDxRef-Component-mio-1.2.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-itoa-1.0.18",
+        "CycloneDxRef-Component-serde-1.0.203",
+        "CycloneDxRef-Component-ryu-1.0.23"
+      ],
+      "ref": "CycloneDxRef-Component-serde_json-1.0.117"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-stable_deref_trait-1.2.1",
+        "CycloneDxRef-Component-yoke-derive-0.8.2",
+        "CycloneDxRef-Component-zerofrom-0.1.8"
+      ],
+      "ref": "CycloneDxRef-Component-yoke-0.8.3"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-strum_macros-0.26.4"
+      ],
+      "ref": "CycloneDxRef-Component-strum-0.26.3"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-wasm-bindgen-macro-support-0.2.127",
+        "CycloneDxRef-Component-quote-1.0.47"
+      ],
+      "ref": "CycloneDxRef-Component-wasm-bindgen-macro-0.2.127"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-foreign-types-shared-0.1.1"
+      ],
+      "ref": "CycloneDxRef-Component-foreign-types-0.3.2"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-zerofrom-0.1.8",
+        "CycloneDxRef-Component-zerovec-derive-0.11.6",
+        "CycloneDxRef-Component-yoke-0.8.3"
+      ],
+      "ref": "CycloneDxRef-Component-zerovec-0.11.8"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-quote-1.0.47",
+        "CycloneDxRef-Component-proc-macro2-1.0.107",
+        "CycloneDxRef-Component-syn-2.0.119"
+      ],
+      "ref": "CycloneDxRef-Component-pin-project-internal-1.1.13"
+    },
+    {
+      "dependsOn": [
+        "CycloneDxRef-Component-displaydoc-0.2.7",
+        "CycloneDxRef-Component-zerovec-0.11.8"
+      ],
+      "ref": "CycloneDxRef-Component-tinystr-0.8.4"
+    }
+  ],
+  "metadata": {
+    "authors": [
+      {
+        "name": "sjg"
+      }
+    ],
+    "component": {
+      "components": [
+        {
+          "author": "",
+          "bom-ref": "CycloneDxRef-Component-jbl-aura-link-0.5.0-alpha.1",
+          "description": "Cross-platform JBL Authentics 300 and Aura Studio 5 association verifier",
+          "externalReferences": [
+            {
+              "type": "vcs",
+              "url": "https://github.com/SongJunguo/jbl-aura-play-together"
+            }
+          ],
+          "licenses": [
+            {
+              "expression": "MIT"
+            }
+          ],
+          "name": "jbl-aura-link",
+          "type": "library",
+          "version": "0.5.0-alpha.1"
+        }
+      ],
+      "name": "jbl-aura-link",
+      "type": "application"
+    },
+    "timestamp": "2026-08-30T08:17:58.943Z",
+    "tools": [
+      {
+        "name": "cargo-sbom",
+        "version": "0.10.0"
+      }
+    ]
+  },
+  "serialNumber": "urn:uuid:09173c7e-6939-425c-8914-501e0f33f62a",
+  "specVersion": "1.6",
+  "version": 1
+}

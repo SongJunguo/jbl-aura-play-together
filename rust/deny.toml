@@ -1,0 +1,38 @@
+# Dependency policy for the public Ubuntu artifact. Keep exceptions empty unless
+# a reviewed, time-bounded rationale is documented next to the exception.
+
+[graph]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[advisories]
+version = 2
+ignore = []
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSL-1.0",
+  "MIT",
+  "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+deny = [
+  { crate = "idna:<1.0.3", reason = "RUSTSEC-2024-0421; keep URL IDNA handling on the fixed line" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -18,6 +18,55 @@ ON, and a listener confirmed that both speakers were audible while one test
 source was playing. No JBL `7951` application-level success notification was
 captured.
 
+The current exact firmware also produced no `7951` callback in a strict
+SUBSCRIBE-before-GATT trial with the narrow callback firewall rule installed.
+The Rust controller therefore exposes only `JBL_BROADCAST_CONFIRMATION=ack|gena`
+and defaults this tested pair to `ack`. ACK mode reports
+`accepted_unconfirmed` plus `broadcast_acknowledgement_only` with CLI exit `0`;
+only a matching
+GENA action 33/34 reports `accepted` plus
+`broadcast_business_notification`. A managed `linked` state describes the last
+accepted controller action, not a 7951 or acoustic proof.
+
+The narrow callback firewall rule was explicitly authorized and installed, but
+strict production START still ended `jbl_broadcast_result_timed_out` and was
+followed by legacy-GATT normalization. The rule is not protocol-success
+evidence. The latest HCI trace shows the earlier deep-standby wake began with
+Android system BR/EDR A2DP auto reconnect, stored link-key authentication/
+encryption and AVDTP Open; FDDF appeared about `2.5` seconds later and App LE
+reads came later still. The wake module is now integrated in production and is
+included in the latest neutral artifact. The default cold path performs one
+stable raw-control attempt, then on an eligible failure performs one bounded
+A2DP profile connect (`20` seconds), requires fresh exact FDDF identity/PID
+within `30` seconds, disconnects the profile and confirms release within `5`
+seconds, retries stable raw once, then retains the original LE fallback. All of
+this shares one `150`-second outer deadline. If profile release is not confirmed,
+startup fails before any role write. The latest silent no-button cold run began
+with no active audio stream, a clean journal and no resolved ready-made BlueZ
+device session. START completed in `122.15` seconds as
+`accepted_unconfirmed`/`linked`; status reported the exact two-member pair
+verified/healthy with Aura route `fresh_le`. STOP completed in `15.89` seconds
+as `accepted_unconfirmed`/`ready`; the final journal was clean and
+`NRestarts=0`. No phone App participated in the transaction, but there was no
+ADB observation of phone state. This verifies the overall no-button cold path
+within `150` seconds; the A2DP `wake_then_stable` subpath was not separately hit
+or proven.
+
+The current offline gate totals are `258` library tests plus `8` CLI tests
+(`266` in the main harness), plus the FIFO private-file helper gate `1/1`;
+audit, dependency-deny, fallback, privacy and neutral-build gates pass, and
+compatibility evidence mode is complete.
+
+The final neutral rebuild is `8,284,440` bytes, requires at most `GLIBC_2.34`,
+and dynamically links only `libc` and `libgcc`. Installation/digest verification
+for this rebuilt binary now passes: artifact, installed file and running process
+digests match. After restart and one read-only status, the enabled/active service
+had `NRestarts=0` and managed state unknown/offline. Its `15`-second restart-idle
+sample measured `8,828 KiB` RSS, one thread, `15` file descriptors and `0.0667%`
+average CPU (`1` tick). The readable loopback Web/status view
+exposes only two sanitized members, allowlisted channel data, `last_action` and
+`age_ms`; CSP and CSRF protections remain enabled.
+
 Static interoperability analysis subsequently supplied controller-side
 semantics for both writes. JBL One `2.7.9` builds `7957 action=1` with the
 controlled JBL's own address as the broadcast address and waits for `7951`.
@@ -33,11 +82,20 @@ that state after leaving and reopening the page. No music was started and no
 fresh `7951` object was available in release logcat, so this is additional
 controller-state evidence rather than a new acoustic or data-plane proof.
 
-The official PartyTogether UI uses the ENTER/EXIT state machine, while `7957`
-belongs to a separate broadcaster-assistant path inside the controller. This
-project combines controller-supported semantics from those two paths; it does
-not claim that its transaction is a byte-for-byte replay of one official UI
-transaction.
+A later simultaneous UI, HCI and network capture resolved the complete official
+home flow. Aura AA ON succeeded; one JBL `7937` GATT attempt was rejected as
+Write Not Permitted; the successful JBL stage correlated with an encrypted
+`95`-byte Wi-Fi TLS record and the App's OneWiFiSession `enterAuracast` call.
+Removal used successful Aura AA OFF plus an encrypted `94`-byte record aligned
+with `exitAuracast`. No `7957` step belonged to this home flow. Its audio source
+was Android A2DP into Aura; Aura then reported PRIMARY and JBL RECEIVER, and
+both were audible. TLS plaintext was not decrypted; command identity comes from
+time, record length/direction and the exact static call graph. See the
+[sanitized runtime evidence](docs/OFFICIAL_APP_RUNTIME_EVIDENCE_2026-08-30.md).
+
+The historical v0.4 compatibility sequence still uses `7957` from the separate
+broadcaster-assistant path. It remains valid historical evidence, but it is not
+presented as a byte-for-byte replay of the official PartyTogether home flow.
 
 The same day exposed and resolved an important Linux lifecycle problem. A
 one-shot `start` succeeded, but an immediate one-shot `stop` could not create
@@ -83,6 +141,81 @@ The CLI therefore reports transport acknowledgements and conservative
 diagnostics. It never turns a successful GATT write into a claim that BASS is
 active. See [Evidence](docs/EVIDENCE.md) and [Protocol](docs/PROTOCOL.md).
 
+Development follows an explicit clean-room and language policy. See
+[Repository working rules](AGENTS.md), [upstream feature intake](docs/UPSTREAM_INTAKE.md),
+and [ADR-0001](docs/ADR-0001-LANGUAGE.md). Rust 1.96.0 is the current v0.5
+product mainline; the verified Python/BlueZ implementation remains the
+behavioral oracle and rollback until Rust passes the same hardware gates.
+
+Development is Ubuntu-first. v0.5 must be completed and accepted on Ubuntu
+22.04 before the repository is moved to Windows 11 for the second platform port.
+Windows support is planned, not currently verified. See the normative
+[project goal](docs/PROJECT_GOAL.md) and [platform architecture](docs/CROSS_PLATFORM.md).
+The normative product requirements are maintained separately in
+[the Chinese requirements specification](docs/REQUIREMENTS.zh-CN.md); contributor
+rules do not substitute for that document.
+
+The modular Rust v0.5 mainline builds as one Ubuntu executable and has now
+passed a controlled native lifecycle checkpoint. Its read-only path matched
+both private member identities exactly and reported the expected pair
+configuration ready; a STOP comparison still proves that this retained
+membership is not a live linked-state signal. Native Rust `start` and `stop`
+were accepted, and two no-button cold starts respectively reported `br_edr`
+during the first round and ended `le` during the second. The paired-and-trusted
+stable public object only triggered BlueZ connection; Rust adopted the unique
+connected random GATT object after exact FDDF PID/stable-identity matching.
+Explicit recovery returned to `ready`, and two normal retained-session stops
+completed in approximately 0.44 and 0.57 seconds.
+
+The earlier full-song Rust attempt at approximately 03:45 is not a protocol
+result: Home Centre issued an automatic STOP in the same experimental window,
+so its JBL-only audio was contaminated by a concurrent writer. A later clean
+trial used the Home-flow-only build without `7957`. After the EOF fix, Aura AA
+ON and JBL Wi-Fi ENTER were accepted and local state became `linked`; the test
+waited `15` seconds, then sent Music Assistant audio only to JBL. The user again
+confirmed JBL audio and a silent Aura. This refutes the no-`7957` design for the
+project's JBL-source direction and rules out the original `2`-second delay as
+the sole cause; fixed `10.5`/`15`-second waits are not demonstrated repairs.
+The next exact-GATT candidate reintroduced the separate Assistant `7957`
+broadcaster semantics for JBL alongside Aura AA receiver semantics. After phone
+control was released, START was accepted; Music Assistant targeted only JBL at
+the requested `5%`, and the user confirmed both speakers. This is the first
+Rust target-direction acoustic pass. HTTPS `7957` returned HTTP `200` with an
+`unknown command` device result, while GATT handle `0x002a` was ACK-only and no
+`7951` arrived. Normal STOP then failed outcome-unknown on an Aura ACK timeout;
+explicit recovery returned accepted/`ready` within `13` seconds. After the
+fresh-bearer release fix, round two restarted the service, released phone
+Bluetooth ownership, repeated the JBL-only requested-`5%` dual-audio pass, and
+then completed an ordinary idle STOP in approximately `43` seconds as
+accepted/`ready` without recovery. Acoustic testing stopped after the two
+agreed successes. P0/release is still incomplete: `7951` is unconfirmed and a
+prior deep-standby case needed the phone's automatic connection to wake the
+speaker. The new no-button cold run verifies the overall `fresh_le` fallback,
+but not the specific A2DP `wake_then_stable` branch. This remains a directional
+composition across two official state machines, not one official UI sequence.
+The older v0.4 acoustic result remains separate evidence.
+v0.4 also remains installed as an explicitly selected fallback; Rust
+never switches to it automatically after a rejected or uncertain action. Both
+versions honor shared owner-only operation/session locks, so they cannot own
+the speakers concurrently. The Rust daily UI is on loopback port `8096`,
+separate from Music Assistant on `8095`. See the
+[Rust implementation notes](rust/README.md) and
+[sanitized checkpoint evidence](docs/RUST_LAN_EVIDENCE_2026-08-30.md), plus the
+[official-App/Rust contrast](docs/OFFICIAL_APP_RUNTIME_EVIDENCE_2026-08-30.md).
+
+The longer-term product goal has expanded beyond association-only tooling: a
+local, open-source JBL One replacement that covers the useful capabilities of
+the two closest public projects while retaining this repository's unique Play
+Together backend. The proposed product requirements and honest feature matrix
+are recorded in [Open JBL One requirements](docs/OPEN_JBL_ONE_REQUIREMENTS.zh-CN.md)
+and [feature parity](docs/FEATURE_PARITY.zh-CN.md). A separate general-purpose
+main repository is recommended so this v0.4 evidence history remains intact.
+
+The active implementation mainline is the
+[Play Together Rust plan](docs/PLAY_TOGETHER_RUST_PLAN.zh-CN.md), not broad JBL
+feature parity. Generic controls remain deferred until this unique core passes
+its Ubuntu acceptance gate.
+
 ## Supported test fingerprint
 
 - JBL Authentics 300, firmware `26.24.31.50.00`
@@ -94,19 +227,20 @@ active. See [Evidence](docs/EVIDENCE.md) and [Protocol](docs/PROTOCOL.md).
 
 Other firmware and models are unverified.
 
-## How it works
+## How the historical v0.4 compatibility path works
 
 1. Before changing either role, a lightweight local supervisor resolves the
    Aura's current random LE address from a verified live FDDF advertisement,
    connects both speakers, and keeps both control sessions open. The stable
    BR/EDR route remains a compatibility fallback.
-2. Linux writes OneOS `ENTER_AURA_CAST` and `SET_AURACAST_BROADCAST` to the JBL
+2. The v0.4 path writes OneOS `ENTER_AURA_CAST` and
+   `SET_AURACAST_BROADCAST` to the JBL
    private PL characteristic. The controller intent is to start this JBL as a
    broadcaster.
 3. Linux writes AA token `0x3c=ON` to the Aura over ATT on the resolved live LE
    bearer (or the compatible stable BR/EDR fallback). The controller records
    the Aura as SECONDARY/on after a successful reply.
-4. `stop` uses the already-open sessions in the safe order Aura OFF, JBL
+4. Its `stop` uses the already-open sessions in the safe order Aura OFF, JBL
    `action=2`, then JBL EXIT. It does not gamble on reconnecting after the role
    transition.
 5. The observed result is consistent with device-side firmware coordination;
@@ -115,7 +249,32 @@ Other firmware and models are unverified.
 The tool does not duplicate audio to two Linux sinks, which avoids the two-clock
 delay seen with independent AirPlay/A2DP outputs.
 
-## Quick start
+## v0.5 Rust alpha quick start
+
+First prepare the documented owner-only configuration outside the repository,
+including your authorized client certificate/private key, exact device pin and
+private identity anchors. This project does not distribute vendor credentials.
+See the complete [Rust alpha guide](rust/README.md) before enabling writes.
+
+```bash
+./rust/build-neutral-release.sh
+./scripts/install-rust-user-service.sh
+# Populate and permission-check the installed owner-only config.
+jbl-aura-link shutdown
+systemctl --user disable --now jbl-aura-link-session.service
+systemctl --user enable jbl-aura-link-rust.service
+systemctl --user start jbl-aura-link-rust.service
+jbl-aura-link-rust status
+jbl-aura-link-rust start
+jbl-aura-link-rust stop
+```
+
+The local page is `http://127.0.0.1:8096`. The tested firmware defaults to
+`JBL_BROADCAST_CONFIRMATION=ack`, so a transport-accepted action reports
+`accepted_unconfirmed`/`broadcast_acknowledgement_only` with CLI exit `0`; it is
+not a `7951` or acoustic claim.
+
+## v0.4 fallback quick start
 
 Install the small runtime dependency set:
 
@@ -234,6 +393,7 @@ under `/tmp`. Direct BlueZ session release is bounded by
 - [No-button cold reconnect acceptance](docs/COLD_RECONNECT_2026-08-29.md)
 - [Protocol notes](docs/PROTOCOL.md)
 - [Evidence and unresolved questions](docs/EVIDENCE.md)
+- [Official-App runtime evidence, 2026-08-30](docs/OFFICIAL_APP_RUNTIME_EVIDENCE_2026-08-30.md)
 - [Prior open-source research](docs/PRIOR_RESEARCH.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
@@ -241,7 +401,7 @@ under `/tmp`. Direct BlueZ session release is bounded by
 ## Resource use
 
 The implementation is Bash plus Python, `dbus-fast`, and BlueZ `gatttool`. It
-has no CUDA, GPU, audio decoding, model, cloud, or account dependency.
+has no audio-decoding, model, cloud, or account dependency.
 
 ## License and trademarks
 

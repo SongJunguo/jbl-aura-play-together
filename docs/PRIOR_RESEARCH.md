@@ -6,6 +6,23 @@ Aura Studio 5 Play Together, or successful `0x3c` sequence for this device pair.
 Search indexes are not complete, so this is not a claim that no private or
 unindexed research exists.
 
+## Required reference-project record
+
+The two repositories named in `AGENTS.md` were rechecked on **2026-08-30**.
+At that check, each inspected commit was also the repository's remote `HEAD`.
+This table is the centralized provenance and license gate for those inputs;
+later sections describe the technical facts in more detail.
+
+| Repository | Inspected commit | License status checked 2026-08-30 | Permitted use in this repository |
+| --- | --- | --- | --- |
+| <https://github.com/k1rnt/jbl-soundbar-cli> | `7d10bdb1ebe0c5a77c9a4c14ebe4580bd3735309` | `Cargo.toml` declares `license = "MIT"`, but the inspected tree has no `LICENSE`, `COPYING`, or `NOTICE` text and GitHub's license endpoint returned no detected license. | Protocol facts and architecture reference only. No expressive source code or bundled material was copied. |
+| <https://github.com/MrBearPresident/JBL_Soundbar> | `7f347ca97922b6680993d4874fbadbc479449608` | The inspected tree has no license declaration or `LICENSE`, `COPYING`, or `NOTICE` text; GitHub's license endpoint returned no detected license. The tree also contains credential-named files, which are private-reference material only. | Protocol facts and architecture reference only. No code, certificate, key, or device identifier was copied. |
+
+Absence of a detected license file is recorded as an evidence boundary, not a
+legal conclusion. Under this repository's clean-room rules, both codebases
+remain reference-only unless their redistribution status is resolved and
+documented in a later review.
+
 ## Search scope
 
 The search covered GitHub repositories, code, issues, and discussions;

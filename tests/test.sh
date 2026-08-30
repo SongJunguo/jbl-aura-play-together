@@ -100,6 +100,7 @@ printf 'PASS transport failure address redaction\n'
 
 lock_runtime="${test_tmp}/runtime"
 mkdir -p "${lock_runtime}/jbl-aura-link"
+chmod 700 "${lock_runtime}/jbl-aura-link"
 printf 'sentinel\n' >"${lock_runtime}/jbl-aura-link/operation.lock"
 (
   XDG_RUNTIME_DIR="${lock_runtime}"
@@ -113,6 +114,245 @@ acquire_lock
 release_operation_lock
 (acquire_lock)
 printf 'PASS operation lock can be reacquired after explicit release\n'
+
+# Rust holds this same gate for its full service lifetime. Model that owner
+# with a separate descriptor and prove every v0.4 public entry fails before it
+# can enter its device/session path.
+exec 8>>"${SESSION_RUNTIME_DIR}/operation.lock"
+flock -n 8
+assert_fails 'a Rust owner excludes v0.4 before device I/O' \
+  acquire_public_operation_lock
+flock -u 8
+exec 8>&-
+printf 'PASS v0.4 honors the cross-version shared operation lock\n'
+
+acquire_lock
+create_launch_reservation
+assert_fails 'a secure launch reservation blocks public operations' \
+  reject_launch_in_progress
+clear_launch_reservation
+release_operation_lock
+printf 'PASS secure launch reservation create and cleanup\n'
+
+mkdir -m 755 -- "${SESSION_LAUNCH_RESERVATION}"
+assert_fails 'wrong-mode launch reservation is rejected' validate_launch_reservation
+chmod 700 -- "${SESSION_LAUNCH_RESERVATION}"
+clear_launch_reservation
+ln -s "${test_tmp}/marker-target" "${SESSION_LAUNCH_RESERVATION}"
+assert_fails 'symlinked launch reservation is rejected' validate_launch_reservation
+rm -- "${SESSION_LAUNCH_RESERVATION}"
+
+installed_start_events="${test_tmp}/installed-start-events"
+(
+  installed_ready=0
+  prepare_session_paths() { :; }
+  export_session_environment() { :; }
+  session_available() { ((installed_ready == 1)); }
+  systemd_user_available() { return 0; }
+  persistent_session_unit_available() { return 0; }
+  release_operation_lock() { printf 'release\n' >>"${installed_start_events}"; }
+  acquire_lock() { printf 'acquire\n' >>"${installed_start_events}"; }
+  systemctl() {
+    printf 'systemctl %s\n' "$*" >>"${installed_start_events}"
+    installed_ready=1
+    clear_launch_reservation
+  }
+  session_client() { printf '{"ok":true,"state":"ready"}\n'; }
+  SESSION_LAUNCH_MODE=systemd
+  SESSION_START_TIMEOUT=1
+  launch_session_daemon >/dev/null
+)
+assert_equal $'release\nsystemctl --user start jbl-aura-link-session.service\nacquire' \
+  "$(cat "${installed_start_events}")" \
+  'installed service start releases and reacquires the outer operation lock'
+
+# Exercise the boot/restart path as separate processes: ExecStartPre must leave
+# the reservation behind after its operation-lock fd closes, and ExecStartPost
+# may remove it only after the managed session is ready.
+(
+  INVOCATION_ID=11111111111111111111111111111111
+  validate_config() { :; }
+  require_command() { :; }
+  disconnect_aura_a2dp() { :; }
+  begin_pulse_bluetooth_guard() { :; }
+  BLUEZ_FULL_DISCONNECT_BEFORE_SESSION=false
+  service_preflight >/dev/null
+)
+[[ -d "${SESSION_LAUNCH_RESERVATION}" ]] || {
+  printf 'FAIL automatic service preflight did not retain its launch reservation\n' >&2
+  exit 1
+}
+set +e
+(acquire_public_operation_lock) >/dev/null 2>&1
+preflight_writer_rc=$?
+set -e
+((preflight_writer_rc != 0)) || {
+  printf 'FAIL public writer crossed the post-preflight launch window\n' >&2
+  exit 1
+}
+(
+  INVOCATION_ID=11111111111111111111111111111111
+  require_session_manager() { :; }
+  require_command() { :; }
+  wait_for_managed_session() { return 0; }
+  restore_pulse_bluetooth_modules() { :; }
+  service_post_start
+)
+[[ ! -e "${SESSION_LAUNCH_RESERVATION}" ]] || {
+  printf 'FAIL successful service post-start retained its launch reservation\n' >&2
+  exit 1
+}
+printf 'PASS automatic service launch reserves preflight through ready post-start\n'
+
+set +e
+(
+  INVOCATION_ID=22222222222222222222222222222222
+  validate_config() { :; }
+  require_command() { :; }
+  disconnect_aura_a2dp() { return 1; }
+  restore_pulse_bluetooth_modules() { :; }
+  restore_aura_a2dp() { :; }
+  service_preflight
+) >/dev/null 2>&1
+failed_preflight_rc=$?
+set -e
+((failed_preflight_rc != 0)) || {
+  printf 'FAIL mocked service preflight failure unexpectedly succeeded\n' >&2
+  exit 1
+}
+[[ ! -e "${SESSION_LAUNCH_RESERVATION}" ]] || {
+  printf 'FAIL failed service preflight retained its launch reservation\n' >&2
+  exit 1
+}
+printf 'PASS failed service preflight clears its launch reservation\n'
+
+# A delayed ExecStopPost from an older systemd runtime cycle must not consume
+# the reservation of a newly queued start transaction.
+acquire_lock
+create_launch_reservation
+INVOCATION_ID=33333333333333333333333333333333 \
+  claim_launch_reservation_for_service
+release_operation_lock
+(
+  INVOCATION_ID=44444444444444444444444444444444
+  restore_pulse_bluetooth_modules() { :; }
+  restore_aura_a2dp() { :; }
+  SERVICE_RESULT=success
+  service_cleanup
+)
+[[ -d "${SESSION_LAUNCH_RESERVATION}/invocation-33333333333333333333333333333333" ]] || {
+  printf 'FAIL old service cleanup consumed the next invocation reservation\n' >&2
+  exit 1
+}
+(
+  INVOCATION_ID=33333333333333333333333333333333
+  restore_pulse_bluetooth_modules() { :; }
+  restore_aura_a2dp() { :; }
+  SERVICE_RESULT=success
+  service_cleanup
+)
+[[ ! -e "${SESSION_LAUNCH_RESERVATION}" ]] || {
+  printf 'FAIL owning service cleanup retained its launch reservation\n' >&2
+  exit 1
+}
+printf 'PASS service cleanup only releases its own invocation reservation\n'
+
+concurrent_ready="${test_tmp}/launch-reservation-ready"
+concurrent_release="${test_tmp}/launch-reservation-release"
+concurrent_device_log="${test_tmp}/launch-reservation-device-writes"
+(
+  acquire_lock
+  create_launch_reservation
+  release_operation_lock
+  : >"${concurrent_ready}"
+  while [[ ! -e "${concurrent_release}" ]]; do
+    sleep 0.01
+  done
+  acquire_lock
+  clear_launch_reservation
+  release_operation_lock
+) &
+reservation_holder_pid=$!
+for _ in {1..200}; do
+  [[ -e "${concurrent_ready}" ]] && break
+  sleep 0.01
+done
+[[ -e "${concurrent_ready}" ]] || {
+  kill "${reservation_holder_pid}" >/dev/null 2>&1 || true
+  wait "${reservation_holder_pid}" >/dev/null 2>&1 || true
+  printf 'FAIL concurrent launch reservation holder did not become ready\n' >&2
+  exit 1
+}
+set +e
+(
+  validate_config() { :; }
+  require_session_manager() { :; }
+  require_command() { :; }
+  session_available() {
+    printf 'UNEXPECTED_DEVICE_TRANSACTION\n' >>"${concurrent_device_log}"
+    return 0
+  }
+  session_client() {
+    printf 'UNEXPECTED_DEVICE_TRANSACTION\n' >>"${concurrent_device_log}"
+    return 1
+  }
+  stop_link
+) >/dev/null 2>&1
+concurrent_writer_rc=$?
+set -e
+((concurrent_writer_rc != 0)) || {
+  printf 'FAIL concurrent public writer crossed the launch reservation\n' >&2
+  exit 1
+}
+[[ ! -e "${concurrent_device_log}" ]] || {
+  printf 'FAIL concurrent public writer reached a device/session operation\n' >&2
+  exit 1
+}
+: >"${concurrent_release}"
+wait "${reservation_holder_pid}"
+acquire_public_operation_lock
+release_operation_lock
+printf 'PASS concurrent public writer is blocked for the full reserved launch window\n'
+
+acquire_lock
+create_launch_reservation
+release_operation_lock
+public_guard_log="${test_tmp}/public-entry-device-operations"
+for guarded_entry in start_link stop_link shutdown_session recover_stop_link \
+  install_user_service show_status; do
+  set +e
+  (
+    validate_config() { :; }
+    require_command() { :; }
+    require_gatttool() { :; }
+    require_session_manager() { :; }
+    require_dbus_fast() { :; }
+    systemd_user_available() { return 0; }
+    session_available() {
+      printf 'UNEXPECTED:%s\n' "${guarded_entry}" >>"${public_guard_log}"
+      return 0
+    }
+    session_client() {
+      printf 'UNEXPECTED:%s\n' "${guarded_entry}" >>"${public_guard_log}"
+      return 1
+    }
+    "${guarded_entry}"
+  ) >/dev/null 2>&1
+  guarded_entry_rc=$?
+  set -e
+  ((guarded_entry_rc != 0)) || {
+    printf 'FAIL %s crossed an active launch reservation\n' "${guarded_entry}" >&2
+    exit 1
+  }
+done
+[[ ! -e "${public_guard_log}" ]] || {
+  printf 'FAIL a guarded public entry reached a session/device operation\n' >&2
+  exit 1
+}
+acquire_lock
+clear_launch_reservation
+release_operation_lock
+printf 'PASS every public control entry fails closed during reserved launch\n'
 
 symlink_runtime="${test_tmp}/symlink-runtime"
 mkdir -p "${symlink_runtime}/target"
@@ -477,7 +717,10 @@ bash -c '
   systemd_user_available() { return 0; }
   session_available() { return 1; }
   wait_for_managed_session() { return 0; }
-  systemctl() { printf "%s\n" "$*" >>"${SERVICE_TEST_LOG}"; }
+  systemctl() {
+    printf "%s\n" "$*" >>"${SERVICE_TEST_LOG}"
+    [[ "$*" != "--user is-enabled --quiet jbl-aura-link-rust.service" ]]
+  }
   loginctl() { printf "yes\n"; }
   install_user_service >/dev/null
 ' _ "${repo_dir}/bin/jbl-aura-link"
@@ -516,6 +759,35 @@ if ! grep -Fq -- '--user enable jbl-aura-link-session.service' "${service_log}" 
     exit 1
 fi
 printf 'PASS install-service enables and starts the boot unit\n'
+
+v04_conflict_log="${service_root}/v04-conflict.log"
+set +e
+JBL_AURA_INSTALL_ROOT="${service_root}/conflict/lib/jbl-aura-link" \
+JBL_AURA_USER_BIN_DIR="${service_root}/conflict/bin" \
+JBL_AURA_USER_UNIT_DIR="${service_root}/conflict/units" \
+JBL_AURA_CONFIG="${repo_dir}/config/devices.env.example" \
+SERVICE_TEST_LOG="${v04_conflict_log}" \
+bash -c '
+  set -euo pipefail
+  source "$1"
+  systemd_user_available() { return 0; }
+  systemctl() {
+    printf "%s\n" "$*" >>"${SERVICE_TEST_LOG}"
+    [[ "$*" == "--user is-enabled --quiet jbl-aura-link-rust.service" ]]
+  }
+  install_user_service
+' _ "${repo_dir}/bin/jbl-aura-link" >/dev/null 2>&1
+v04_conflict_rc=$?
+set -e
+if ((v04_conflict_rc == 0)); then
+  printf 'FAIL v0.4 installer accepted an enabled Rust unit\n' >&2
+  exit 1
+fi
+[[ ! -e "${service_root}/conflict/bin/jbl-aura-link" ]] || {
+  printf 'FAIL v0.4 installer changed files before rejecting Rust ownership\n' >&2
+  exit 1
+}
+printf 'PASS v0.4 installer rejects an enabled Rust unit before mutation\n'
 
 saved_jbl_mac="${JBL_BT_MAC}"
 JBL_BT_MAC=''
