@@ -46,7 +46,8 @@ The controller must keep these evidence dimensions separate:
 - command acceptance: HTTPS BasicResponse or verified legacy JBL response;
 - Aura role acceptance: exact AA acknowledgement on the held bearer;
 - managed live state: the current single-writer transaction/session state,
-  which becomes unknown after an external App action, restart, or lost bearer;
+  not a device-role query. It may retain `linked` after a native bearer was
+  released, so it cannot authorize a native idempotent shortcut;
 - acoustic result: a bounded low-volume human check during release acceptance;
 - standards evidence: BASS/BASE/BIG/BIS/ISO, still unproven.
 
@@ -57,6 +58,13 @@ Until a separate device-reported live role query is reproduced, fresh START and
 STOP success requires the relevant application/control acknowledgements plus a
 healthy single-writer session; release acceptance additionally requires the
 human two-speaker check.
+
+`NativePair` therefore always executes START and STOP, even when managed state,
+backend lifecycle, health, verified membership and Aura route appear consistent.
+The 2026-08-30 counterexample reported native START as idempotent without a
+device write while Aura was silent. Same-session idempotence remains only for
+the legacy held-session backend; repeated shutdown after managed offline remains
+a local no-op.
 
 The same experiment exposed an unrelated local lock self-conflict when an outer
 CLI synchronously started an installed service whose `ExecStartPre` acquired

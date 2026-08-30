@@ -19,6 +19,9 @@ Aura Studio 5 的完整生命周期操作：
 - 一项控制事务从开始到结果确定都固定同一个后端。超时或结果不确定时，不得在同一
   事务中切换到另一后端并重复写入。只能结束本次事务，重新读取安全状态后由操作者
   显式决定下一步。
+- NativePair START/STOP 一律执行 backend，不使用 managed/health/lifecycle/route
+  推导幂等；只保留 Legacy held session 同 session 幂等。managed offline 后重复
+  shutdown 仍是本地 no-op。
 
 `PairBackendTransaction` 在调用前后检查后端类型，阻止运行中静默切换。后端回复只
 投影为 allowlist 生命周期、粗粒度健康状态、是否存在错误和 Aura 传输枚举；原始错误、

@@ -940,6 +940,8 @@ fn failure_name(value: ControllerFailure) -> &'static str {
         ControllerFailure::PairConfigurationUnavailable => "pair_configuration_unavailable",
         ControllerFailure::ExpectedPairNotConfigured => "expected_pair_not_configured",
         ControllerFailure::BackendRejectedBeforeSend => "backend_rejected_before_send",
+        ControllerFailure::AuraInvalidConfiguration => "aura_invalid_configuration",
+        ControllerFailure::AuraRuntimeUnavailable => "aura_runtime_unavailable",
         ControllerFailure::AuraAdapterUnavailable => "aura_adapter_unavailable",
         ControllerFailure::AuraDiscoveryUnavailable => "aura_discovery_unavailable",
         ControllerFailure::AuraVerifiedAdvertisementNotFound => {
@@ -953,6 +955,9 @@ fn failure_name(value: ControllerFailure) -> &'static str {
         ControllerFailure::AuraWakeProfileReleaseFailed => "wake_profile_release_failed",
         ControllerFailure::AuraGattProfileInvalid => "aura_gatt_profile_invalid",
         ControllerFailure::AuraNotificationSetupFailed => "aura_notification_setup_failed",
+        ControllerFailure::AuraTransportNotReady => "aura_transport_not_ready",
+        ControllerFailure::AuraNotificationQueueInvalid => "aura_notification_queue_invalid",
+        ControllerFailure::AuraDisconnectFailed => "aura_disconnect_failed",
         ControllerFailure::AuraWriteUnknown => "aura_write_unknown",
         ControllerFailure::AuraAckTimeout => "aura_ack_timeout",
         ControllerFailure::AuraAckChannelClosed => "aura_ack_channel_closed",
@@ -1098,8 +1103,8 @@ const PAGE_HTML: &str = r#"<!doctype html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Play Together</title></head>
 <body>
 <main><h1>Play Together</h1>
-<p id="message">正在读取…</p>
-<dl><dt>运行状态</dt><dd id="managed">—</dd><dt>双成员配置</dt><dd id="pair">—</dd><dt>后端健康</dt><dd id="health">—</dd><dt>Aura 获取路径</dt><dd id="route">—</dd><dt>状态版本</dt><dd id="revision">—</dd></dl>
+<p role="status" aria-live="polite"><strong id="message">正在读取…</strong></p>
+<dl><dt>本地管理状态</dt><dd id="managed">—</dd><dt>双成员配置</dt><dd id="pair">—</dd><dt>控制通道 / 本地生命周期</dt><dd id="health">—</dd><dt>Aura 获取路径</dt><dd id="route">—</dd><dt>状态版本</dt><dd id="revision">—</dd></dl>
 <h2>成员</h2><ul><li>JBL Authentics 300：<span id="jbl">—</span></li><li>Aura Studio 5：<span id="aura">—</span></li></ul>
 <h2>最近操作</h2><p id="last">本进程尚无操作</p>
 <button id="start" type="button">启动</button><button id="stop" type="button">停止</button></main>
@@ -1107,9 +1112,11 @@ const PAGE_HTML: &str = r#"<!doctype html>
 "use strict";
 let revision = null;
 const byId=id=>document.getElementById(id);
+const ackOnlyWarning="仅收到厂商控制ACK；琉璃是否出声未验证，linked/healthy不代表声学成功";
 function csrf(){const item=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith("jbl_aura_csrf="));return item?item.slice("jbl_aura_csrf=".length):"";}
 function memberText(member){return member.verification+"；声道 "+member.channels.join(", ");}
-function render(data){revision=data.revision;byId("managed").textContent=data.managed_state;byId("pair").textContent=data.pair_configuration;byId("health").textContent=data.backend_health?data.backend_health.level+" / "+data.backend_health.lifecycle:"unavailable";byId("route").textContent=data.backend_health?data.backend_health.aura_acquisition_route:"unresolved";byId("revision").textContent=String(data.revision);const members=new Map(data.members.map(member=>[member.name,member]));byId("jbl").textContent=memberText(members.get("JBL Authentics 300"));byId("aura").textContent=memberText(members.get("Aura Studio 5"));const last=data.last_action;byId("last").textContent=last?last.action+" / "+last.outcome+" / evidence="+(last.evidence??"none")+" / failure="+(last.failure??"none")+" / revision="+last.revision+" / age_ms="+last.age_ms:"本进程尚无操作";byId("message").textContent=data.unresolved_action?"存在未决操作，需要命令行恢复":"状态已更新";}
+function statusMessage(data){if(data.unresolved_action){return "存在未决操作，需要命令行恢复";}const last=data.last_action;if(last&&(last.outcome==="accepted_unconfirmed"||last.evidence==="broadcast_acknowledgement_only")){return ackOnlyWarning;}if(last&&last.outcome==="idempotent"){return "本次操作未写设备。";}return "状态已更新";}
+function render(data){revision=data.revision;byId("managed").textContent=data.managed_state;byId("pair").textContent=data.pair_configuration;byId("health").textContent=data.backend_health?data.backend_health.level+" / "+data.backend_health.lifecycle:"unavailable";byId("route").textContent=data.backend_health?data.backend_health.aura_acquisition_route:"unresolved";byId("revision").textContent=String(data.revision);const members=new Map(data.members.map(member=>[member.name,member]));byId("jbl").textContent=memberText(members.get("JBL Authentics 300"));byId("aura").textContent=memberText(members.get("Aura Studio 5"));const last=data.last_action;byId("last").textContent=last?last.action+" / "+last.outcome+" / evidence="+(last.evidence??"none")+" / failure="+(last.failure??"none")+" / revision="+last.revision+" / age_ms="+last.age_ms:"本进程尚无操作";byId("message").textContent=statusMessage(data);}
 async function refresh(){const response=await fetch("/api/status",{cache:"no-store"});render(await response.json());}
 async function mutate(action){if(revision===null){await refresh();}const response=await fetch("/api/"+action,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf(),"If-Match":"\""+revision+"\""},body:"{}"});if(response.status===409){await refresh();return;}await response.json();await refresh();}
 document.getElementById("start").addEventListener("click",()=>mutate("start"));
@@ -1281,6 +1288,11 @@ mod tests {
         assert!(body.contains("JBL Authentics 300"));
         assert!(body.contains("Aura Studio 5"));
         assert!(body.contains("最近操作"));
+        assert!(body.contains("本地管理状态"));
+        assert!(body.contains("控制通道 / 本地生命周期"));
+        assert!(body.contains("<strong id=\"message\">"));
+        assert!(!body.contains("<dt>运行状态</dt>"));
+        assert!(!body.contains("<dt>后端健康</dt>"));
         assert!(!body.contains("JSON.stringify"));
         assert!(!body.contains("recover-stop"));
         assert!(!body.contains("__CSP_NONCE__"));
@@ -1299,6 +1311,20 @@ mod tests {
             .header("Set-Cookie")
             .unwrap()
             .contains("SameSite=Strict"));
+    }
+
+    #[test]
+    fn page_explicitly_distinguishes_ack_only_idempotence_and_acoustic_success() {
+        let body = PAGE_HTML;
+        assert!(
+            body.contains("仅收到厂商控制ACK；琉璃是否出声未验证，linked/healthy不代表声学成功")
+        );
+        assert!(body.contains("last.outcome===\"accepted_unconfirmed\""));
+        assert!(body.contains("last.evidence===\"broadcast_acknowledgement_only\""));
+        assert!(body.contains("last.outcome===\"idempotent\""));
+        assert!(body.contains("本次操作未写设备。"));
+        assert!(!body.contains("琉璃已出声"));
+        assert!(!body.contains("声学成功已验证"));
     }
 
     #[test]
@@ -1347,6 +1373,26 @@ mod tests {
     fn diagnostic_failure_labels_are_fixed_and_non_identifying() {
         for (failure, expected) in [
             (
+                ControllerFailure::AuraInvalidConfiguration,
+                "aura_invalid_configuration",
+            ),
+            (
+                ControllerFailure::AuraRuntimeUnavailable,
+                "aura_runtime_unavailable",
+            ),
+            (
+                ControllerFailure::AuraTransportNotReady,
+                "aura_transport_not_ready",
+            ),
+            (
+                ControllerFailure::AuraNotificationQueueInvalid,
+                "aura_notification_queue_invalid",
+            ),
+            (
+                ControllerFailure::AuraDisconnectFailed,
+                "aura_disconnect_failed",
+            ),
+            (
                 ControllerFailure::AuraWakeProfileConnectFailed,
                 "wake_profile_connect_failed",
             ),
@@ -1377,6 +1423,22 @@ mod tests {
             (
                 ControllerFailure::JblExitOutcomeUnknown,
                 "jbl_exit_outcome_unknown",
+            ),
+            (
+                ControllerFailure::JblBroadcastResultTimedOut,
+                "jbl_broadcast_result_timed_out",
+            ),
+            (
+                ControllerFailure::JblBroadcastResultUnavailable,
+                "jbl_broadcast_result_unavailable",
+            ),
+            (
+                ControllerFailure::JblBroadcastResultRejected,
+                "jbl_broadcast_result_rejected",
+            ),
+            (
+                ControllerFailure::AuraStartOutcomeUnknown,
+                "aura_start_outcome_unknown",
             ),
         ] {
             assert_eq!(failure_name(failure), expected);

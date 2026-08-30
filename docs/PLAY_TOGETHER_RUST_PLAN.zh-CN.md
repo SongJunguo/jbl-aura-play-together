@@ -3,8 +3,41 @@
 - 建立日期：2026-08-30
 - 当前平台：Ubuntu 22.04
 - 固定设备：JBL Authentics 300 + Harman Kardon Aura Studio 5
-- 当前分支：`v0.5-cleanroom-lan`
+- 当前状态：研究冻结，未发布
 - 最高优先级：Play Together P0
+
+## 0. 当前决策：停止盲测，转入双端逆向
+
+2026-08-30 最新持续听感已经否定“继续调整命令顺序或固定等待时间”的开发方式：
+
+- compatibility JBL-source 的控制 ACK accepted，但恢复 `20%` 播放后持续只有 JBL；
+- 切换为单一 Aura-source 后，最初疑似双响没有持续，十几秒后只有 Aura；
+- 两次结果都不能由 `linked`、`healthy`、双成员配置、AA ACK 或 `7957` ATT ACK 解释为
+  成功；未验证的 official profile 已撤回，不能设为默认或发布。
+
+主线因此冻结为以下研究顺序，任一未知项都禁止猜测：
+
+1. **App 控制端还原**：精确还原 JBL One `2.7.9` 中“先点 Aura、再点底部 JBL”第二步
+   的 UI → ViewModel → runtime device class → session/transport → serializer → callback →
+   reducer 全链；JADX 失败处必须用原始 DEX/Smali/Androguard 或另一反编译器交叉确认。
+2. **固件被控端还原**：解析 Aura Studio 5 精确 OTA 的 AA `0x3c` handler；取得并解析
+   Authentics 300 精确固件，定位 `7937/7938/7942/7951/7955/7957`、action `31..34`、
+   source election、receiver bind 与业务状态机的真实前置条件。
+3. **USB 动态闭环**：静态或固件仍不能消除的分支，只允许用现有手机临时 USB ADB
+   复现一次官方完整 UI 流程；关联 UI hierarchy、logcat、HCI、网络时序，必要时在加密前
+   做授权的方法级 hook。无线调试端口不再作为主证据通道，最终运行不依赖手机。
+4. **Clean-room 实现**：只有控制端与被控端证据一致后，才生成脱敏 fixture、更新 Rust
+   状态机并完成全部离线失败矩阵。不得复制厂商表达性源码、APK、固件或凭据。
+5. **唯一实机验收**：全部证据门槛与离线测试通过后，只执行一次 `20%` 音量的受控
+   start → 播放 → 持续听感 → stop。缺少业务后置条件时不得开始；结果失败即返回研究，
+   不连续换顺序、加延迟或重试。
+
+当前第一阻断项是：**底部 JBL 第二次点击的完整事务仍未知**。当前第二阻断项是：
+**Authentics 300 精确固件及其命令分发表尚未取得**。在两项关闭前，Rust 直接控制只保留
+历史/实验身份，不再宣称日常可靠。
+
+详细任务、证据表与停止条件由本仓库的公开计划和证据文档自洽维护；私有研究工件不进入
+本仓库，也不记录私人路径、设备标识或原始反编译材料。
 
 ## 1. 最终目标
 
@@ -159,6 +192,21 @@ strict GENA 在用户授权安装窄 UFW callback 规则后仍以
 动作 `33/34` 返回 `accepted`、`broadcast_business_notification`。managed `linked` 不
 等同 `7951` 或声学成功。
 
+2026-08-30 native false-idempotent 实机反例中，status 为 managed linked、
+health/lifecycle healthy/linked、Aura transport `le`、route `fresh_le`，但 Aura 无声；
+START 幂等返回且没有设备写，只有 JBL 响。纠正后真实 STOP `46.71` 秒返回
+`accepted_unconfirmed`；首次真实 START `49.76` 秒写前拒绝、journal clean；单次有界
+retry `48.56` 秒返回 `accepted_unconfirmed`。
+随后测试播放器 idle 导致两台都无声，不能判为组网失败；已直接恢复网络音源 `20%` 播放，
+JBL `state=playing`、`volume=20` 后用户确认仍只有 JBL 响、Aura 无声。因此本轮 ACK-only
+accepted START 声学失败；不推翻历史两轮双响，只证明 compatibility transaction 不稳定。
+
+随后停止 JBL 网络音源并启动已有 Aura A2DP bridge。测试播放器状态为 JBL
+idle/volume `20`、Aura playing/volume `20`。最初“两台都响”没有持续；继续听十几秒后
+用户更正为 Aura 响、JBL 不响。该瞬态只记为疑似残余缓冲，不算声学通过，也不能推出
+`audio-sync` 需求。随后停止 Aura 测试音源与 A2DP bridge，最终两个 player 均 idle、
+bridge exited。本轮两个方向都未持续双响，不建立新的实用方案。
+
 深待机 HCI 顺序为 Android 系统 BR/EDR A2DP 自动重连、stored link-key 鉴权/加密、
 AVDTP Open，约 `2.5` 秒后 FDDF，App LE 读取更晚。wake module 已 production 接入：
 stable raw once → 单次有界 A2DP wake → `30` 秒 fresh FDDF exact identity/PID → `5` 秒
@@ -235,8 +283,9 @@ offline -> ready -> linking -> linked
 
 1. 获取跨进程独占锁；
 2. 读取前置成员配置并验证私有身份；
-3. 只有当前同一单写者会话已具有可信 linked 状态时才能幂等采用；成员配置本身不能
-   跳过 START；
+3. `NativePair` 不允许 START 幂等快路：即使 managed linked、health
+   healthy/lifecycle linked、成员 verified 且 Aura route 已解析，也必须执行 backend；
+   仅 legacy held session 可保留同 session 幂等；
 4. 建立/确认 Aura 控制会话；
 5. 执行选定的 JBL ENTER 路径；
 6. 通过 exact GATT value handle `0x002a` 请求 JBL `7957` broadcaster 语义；ATT ACK
@@ -258,11 +307,12 @@ receiver 两个官方状态机。两轮 START 声学已通过，fresh-bearer 修
 
 1. 获取同一锁；
 2. 读取前置成员配置与 managed live 状态；
-3. Aura OFF 并验证回复；
-4. 在独立 Assistant 状态机中请求停止 JBL broadcaster，再执行 JBL EXIT；
-5. 不等待双成员配置消失；成功 ACK 后记录 ready，bearer/外部动作不确定时记录 unknown；
-6. 默认保留最可靠的 ready 控制会话；
-7. `shutdown` 才释放会话给 App/其他主机。
+3. `NativePair` 不允许 STOP 幂等快路；managed ready/healthy 不能替代设备角色写；
+4. Aura OFF 并验证回复；
+5. 在独立 Assistant 状态机中请求停止 JBL broadcaster，再执行 JBL EXIT；
+6. 不等待双成员配置消失；成功 ACK 后记录 ready，bearer/外部动作不确定时记录 unknown；
+7. 默认保留最可靠的 ready 控制会话；
+8. `shutdown` 才释放会话给 App/其他主机；managed offline 的重复 shutdown 可本地 no-op。
 
 ### `recover`
 
@@ -281,8 +331,9 @@ receiver 两个官方状态机。两轮 START 声学已通过，fresh-bearer 修
 
 ### 离线矩阵
 
-- 已有关联时 start 幂等采用；
-- 已解除时 stop 幂等；
+- legacy held session 的同状态 START/STOP 可幂等采用；
+- NativePair 即使 managed/health/lifecycle/route 看似一致也必须重做 START/STOP；
+- managed offline 的重复 shutdown 保持本地 no-op；
 - 单步失败与回滚；
 - 状态过期与并发请求；
 - LAN 超时、Bluetooth 断开、FDDF 空窗、错误身份；

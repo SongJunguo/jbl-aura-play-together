@@ -158,6 +158,25 @@ legacy GATT path. The rule is not protocol-success evidence.
 `33`/`34`; timeout is failure. Managed `linked` is neither a `7951` nor an
 acoustic assertion.
 
+Managed state and transport health are also not native idempotence predicates.
+NativePair START/STOP always execute the backend, even when lifecycle is
+healthy/linked or healthy/ready, membership is verified, and Aura transport/
+route is resolved. Only the Legacy held-session backend may return same-session
+idempotent; repeated shutdown after managed offline remains a local no-op.
+
+The corrective native retry also demonstrates why ACK-only acceptance is not a
+stable acoustic postcondition: after playback resumed, JBL reported playing at
+volume `20`, but the user heard only JBL and a silent Aura. This failure does
+not erase the two earlier successful Rust rounds; the combined record shows an
+unstable compatibility transaction.
+
+Switching the active source to the existing Aura A2DP bridge then
+produced JBL idle/volume `20` and Aura playing/volume `20`. An initial
+two-speaker impression did not persist; after more than ten seconds the user
+confirmed Aura audio with a silent JBL. The transient is possible residual
+buffering, not an acoustic pass, not a pure official Home-control result, and
+not a reason to restore dual-output audio-sync calibration.
+
 The first exact-GATT START was accepted and a JBL-only Music Assistant source
 at requested `5%` was confirmed audible on both speakers. Ordinary STOP then
 ended outcome-unknown with `failure=aura_ack_timeout`; explicit recovery

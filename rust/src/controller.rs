@@ -249,6 +249,8 @@ pub enum ControllerFailure {
     PairConfigurationUnavailable,
     ExpectedPairNotConfigured,
     BackendRejectedBeforeSend,
+    AuraInvalidConfiguration,
+    AuraRuntimeUnavailable,
     AuraAdapterUnavailable,
     AuraDiscoveryUnavailable,
     AuraVerifiedAdvertisementNotFound,
@@ -260,6 +262,9 @@ pub enum ControllerFailure {
     AuraWakeProfileReleaseFailed,
     AuraGattProfileInvalid,
     AuraNotificationSetupFailed,
+    AuraTransportNotReady,
+    AuraNotificationQueueInvalid,
+    AuraDisconnectFailed,
     AuraWriteUnknown,
     AuraAckTimeout,
     AuraAckChannelClosed,
@@ -705,6 +710,15 @@ impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> PairContr
     }
 
     fn is_idempotent(&mut self, action: ControllerAction) -> bool {
+        // Native ACK mode has no business-result or acoustic proof. A user
+        // explicitly issuing START/STOP therefore always requests a fresh
+        // device transaction, even when this process still projects the same
+        // managed lifecycle and a healthy Aura control bearer.
+        if self.backend.kind() == PairBackendKind::NativePair
+            && matches!(action, ControllerAction::Start | ControllerAction::Stop)
+        {
+            return false;
+        }
         let expected_state = match action {
             ControllerAction::Start => ManagedLiveState::Linked,
             ControllerAction::Stop => ManagedLiveState::Ready,
@@ -724,8 +738,6 @@ impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> PairContr
             health.lifecycle() == expected_lifecycle
                 && health.level() == crate::backend::PairHealthLevel::Healthy
                 && !health.has_reported_error()
-                && !(health.backend() == PairBackendKind::NativePair
-                    && health.aura_transport() == crate::backend::AuraControlTransport::Unresolved)
         })
     }
 
@@ -851,6 +863,8 @@ const fn journal_action(action: ControllerAction) -> JournalAction {
 
 const fn controller_failure_from_backend(error: PairBackendError) -> ControllerFailure {
     match error {
+        PairBackendError::AuraInvalidConfiguration => ControllerFailure::AuraInvalidConfiguration,
+        PairBackendError::AuraRuntimeUnavailable => ControllerFailure::AuraRuntimeUnavailable,
         PairBackendError::AuraAdapterUnavailable => ControllerFailure::AuraAdapterUnavailable,
         PairBackendError::AuraDiscoveryUnavailable => ControllerFailure::AuraDiscoveryUnavailable,
         PairBackendError::AuraVerifiedAdvertisementNotFound => {
@@ -872,16 +886,29 @@ const fn controller_failure_from_backend(error: PairBackendError) -> ControllerF
         PairBackendError::AuraNotificationSetupFailed => {
             ControllerFailure::AuraNotificationSetupFailed
         }
-        PairBackendError::AuraWriteUnknown
-        | PairBackendError::AuraAcknowledgementTimedOut
-        | PairBackendError::AuraAcknowledgementChannelClosed
-        | PairBackendError::AuraUnexpectedAcknowledgement
-        | PairBackendError::JblEnterOutcomeUnknown
-        | PairBackendError::JblExitOutcomeUnknown
-        | PairBackendError::JblBroadcastResultTimedOut
-        | PairBackendError::JblBroadcastResultUnavailable
-        | PairBackendError::JblBroadcastResultRejected
-        | PairBackendError::AuraStartOutcomeUnknown => ControllerFailure::BackendRejectedBeforeSend,
+        PairBackendError::AuraTransportNotReady => ControllerFailure::AuraTransportNotReady,
+        PairBackendError::AuraNotificationQueueInvalid => {
+            ControllerFailure::AuraNotificationQueueInvalid
+        }
+        PairBackendError::AuraDisconnectFailed => ControllerFailure::AuraDisconnectFailed,
+        PairBackendError::AuraWriteUnknown => ControllerFailure::AuraWriteUnknown,
+        PairBackendError::AuraAcknowledgementTimedOut => ControllerFailure::AuraAckTimeout,
+        PairBackendError::AuraAcknowledgementChannelClosed => {
+            ControllerFailure::AuraAckChannelClosed
+        }
+        PairBackendError::AuraUnexpectedAcknowledgement => ControllerFailure::AuraUnexpectedAck,
+        PairBackendError::JblEnterOutcomeUnknown => ControllerFailure::JblEnterOutcomeUnknown,
+        PairBackendError::JblExitOutcomeUnknown => ControllerFailure::JblExitOutcomeUnknown,
+        PairBackendError::JblBroadcastResultTimedOut => {
+            ControllerFailure::JblBroadcastResultTimedOut
+        }
+        PairBackendError::JblBroadcastResultUnavailable => {
+            ControllerFailure::JblBroadcastResultUnavailable
+        }
+        PairBackendError::JblBroadcastResultRejected => {
+            ControllerFailure::JblBroadcastResultRejected
+        }
+        PairBackendError::AuraStartOutcomeUnknown => ControllerFailure::AuraStartOutcomeUnknown,
         #[cfg(test)]
         PairBackendError::InvalidSocketPath
         | PairBackendError::UntrustedSocket
@@ -902,6 +929,13 @@ const fn controller_failure_from_backend(error: PairBackendError) -> ControllerF
 
 const fn controller_failure_from_unknown_backend(error: PairBackendError) -> ControllerFailure {
     match error {
+        PairBackendError::AuraInvalidConfiguration => ControllerFailure::AuraInvalidConfiguration,
+        PairBackendError::AuraRuntimeUnavailable => ControllerFailure::AuraRuntimeUnavailable,
+        PairBackendError::AuraTransportNotReady => ControllerFailure::AuraTransportNotReady,
+        PairBackendError::AuraNotificationQueueInvalid => {
+            ControllerFailure::AuraNotificationQueueInvalid
+        }
+        PairBackendError::AuraDisconnectFailed => ControllerFailure::AuraDisconnectFailed,
         PairBackendError::AuraWriteUnknown => ControllerFailure::AuraWriteUnknown,
         PairBackendError::AuraAcknowledgementTimedOut => ControllerFailure::AuraAckTimeout,
         PairBackendError::AuraAcknowledgementChannelClosed => {
@@ -1122,6 +1156,80 @@ mod tests {
         }
     }
 
+    struct NativeHealthyBackend {
+        lifecycle: PairLifecycle,
+        action_calls: usize,
+    }
+
+    impl NativeHealthyBackend {
+        fn accepted(lifecycle: PairLifecycle) -> PairActionResult {
+            PairActionResult::Accepted(PairActionReceipt::new(
+                PairBackendKind::NativePair,
+                lifecycle,
+                PairBackendEvidence::BroadcastAcknowledgementOnly,
+                false,
+            ))
+        }
+    }
+
+    impl PairBackend for NativeHealthyBackend {
+        fn kind(&self) -> PairBackendKind {
+            PairBackendKind::NativePair
+        }
+
+        fn health(&mut self) -> Result<PairHealth, PairBackendError> {
+            Ok(PairHealth::new(
+                PairBackendKind::NativePair,
+                self.lifecycle,
+                false,
+                AuraControlTransport::Le,
+            ))
+        }
+
+        fn start(&mut self) -> PairActionResult {
+            self.action_calls += 1;
+            self.lifecycle = PairLifecycle::Linked;
+            Self::accepted(PairLifecycle::Linked)
+        }
+
+        fn stop(&mut self) -> PairActionResult {
+            self.action_calls += 1;
+            self.lifecycle = PairLifecycle::Ready;
+            Self::accepted(PairLifecycle::Ready)
+        }
+
+        fn shutdown(&mut self) -> PairActionResult {
+            unreachable!("not used")
+        }
+    }
+
+    struct CountingJournal {
+        pending: bool,
+        marks: usize,
+        clears: usize,
+    }
+
+    impl UncertaintyJournal for CountingJournal {
+        fn is_pending(&self) -> bool {
+            self.pending
+        }
+
+        fn mark_pending(
+            &mut self,
+            _action: JournalAction,
+        ) -> Result<(), crate::journal::JournalError> {
+            self.pending = true;
+            self.marks += 1;
+            Ok(())
+        }
+
+        fn clear(&mut self) -> Result<(), crate::journal::JournalError> {
+            self.pending = false;
+            self.clears += 1;
+            Ok(())
+        }
+    }
+
     #[test]
     fn start_requires_membership_before_touching_backend() {
         let backend = Backend::healthy(PairLifecycle::Ready, Vec::new());
@@ -1251,6 +1359,80 @@ mod tests {
     }
 
     #[test]
+    fn closed_rejected_reasons_survive_controller_projection() {
+        for (backend_reason, controller_reason) in [
+            (
+                PairBackendError::AuraInvalidConfiguration,
+                ControllerFailure::AuraInvalidConfiguration,
+            ),
+            (
+                PairBackendError::AuraRuntimeUnavailable,
+                ControllerFailure::AuraRuntimeUnavailable,
+            ),
+            (
+                PairBackendError::AuraTransportNotReady,
+                ControllerFailure::AuraTransportNotReady,
+            ),
+            (
+                PairBackendError::AuraNotificationQueueInvalid,
+                ControllerFailure::AuraNotificationQueueInvalid,
+            ),
+            (
+                PairBackendError::AuraDisconnectFailed,
+                ControllerFailure::AuraDisconnectFailed,
+            ),
+            (
+                PairBackendError::AuraWriteUnknown,
+                ControllerFailure::AuraWriteUnknown,
+            ),
+            (
+                PairBackendError::AuraAcknowledgementTimedOut,
+                ControllerFailure::AuraAckTimeout,
+            ),
+            (
+                PairBackendError::AuraAcknowledgementChannelClosed,
+                ControllerFailure::AuraAckChannelClosed,
+            ),
+            (
+                PairBackendError::AuraUnexpectedAcknowledgement,
+                ControllerFailure::AuraUnexpectedAck,
+            ),
+            (
+                PairBackendError::JblBroadcastResultTimedOut,
+                ControllerFailure::JblBroadcastResultTimedOut,
+            ),
+            (
+                PairBackendError::JblBroadcastResultUnavailable,
+                ControllerFailure::JblBroadcastResultUnavailable,
+            ),
+            (
+                PairBackendError::JblBroadcastResultRejected,
+                ControllerFailure::JblBroadcastResultRejected,
+            ),
+            (
+                PairBackendError::AuraStartOutcomeUnknown,
+                ControllerFailure::AuraStartOutcomeUnknown,
+            ),
+        ] {
+            let rejected = PairActionResult::RejectedBeforeSend(PairActionFailure::new(
+                PairBackendKind::LegacyV04WholePair,
+                backend_reason,
+                None,
+            ));
+            let backend = Backend::healthy(PairLifecycle::Ready, vec![rejected]);
+            let probe = Probe::ready_reads(1);
+            let mut controller = PairController::new(backend, probe);
+
+            let result = controller.start();
+            assert_eq!(
+                result.outcome(),
+                ControllerActionOutcome::RejectedBeforeSend
+            );
+            assert_eq!(result.failure(), Some(controller_reason));
+        }
+    }
+
+    #[test]
     fn wake_stage_rejections_survive_controller_projection() {
         for (backend_reason, controller_reason) in [
             (
@@ -1282,7 +1464,7 @@ mod tests {
     }
 
     #[test]
-    fn only_same_session_managed_state_can_be_adopted_as_idempotent() {
+    fn legacy_same_session_managed_state_can_be_adopted_as_idempotent() {
         let backend = Backend::healthy(
             PairLifecycle::Linked,
             vec![Backend::accepted(PairLifecycle::Linked)],
@@ -1304,6 +1486,78 @@ mod tests {
         );
         let (backend, _) = controller.into_parts();
         assert_eq!(backend.action_calls, 1);
+    }
+
+    #[test]
+    fn native_explicit_start_and_stop_never_use_managed_health_shortcuts() {
+        for (managed_state, lifecycle, action, expected_state, initial_revision) in [
+            (
+                ManagedLiveState::Linked,
+                PairLifecycle::Linked,
+                ControllerAction::Start,
+                ManagedLiveState::Linked,
+                4,
+            ),
+            (
+                ManagedLiveState::Ready,
+                PairLifecycle::Ready,
+                ControllerAction::Stop,
+                ManagedLiveState::Ready,
+                9,
+            ),
+        ] {
+            let mut controller = PairController {
+                backend: NativeHealthyBackend {
+                    lifecycle,
+                    action_calls: 0,
+                },
+                probe: Probe::ready_reads(2),
+                journal: CountingJournal {
+                    pending: false,
+                    marks: 0,
+                    clears: 0,
+                },
+                managed_state,
+                unresolved_action: false,
+                consecutive_failures: 0,
+                revision: initial_revision,
+                last_action: None,
+            };
+
+            let result = match action {
+                ControllerAction::Start => controller.start(),
+                ControllerAction::Stop => controller.stop(),
+                ControllerAction::Shutdown | ControllerAction::RecoverStop => unreachable!(),
+            };
+            assert_eq!(controller.backend.action_calls, 1);
+            assert_eq!(controller.journal.marks, 1);
+            assert_eq!(controller.journal.clears, 1);
+            assert!(!controller.journal.pending);
+            assert_eq!(
+                result.outcome(),
+                ControllerActionOutcome::AcceptedUnconfirmed
+            );
+            assert_eq!(result.managed_state(), expected_state);
+            assert_eq!(
+                result.evidence(),
+                Some(PairBackendEvidence::BroadcastAcknowledgementOnly)
+            );
+            assert_eq!(result.revision(), initial_revision + 2);
+            assert_eq!(controller.revision(), initial_revision + 2);
+            let last = controller
+                .last_action
+                .map(last_action_status)
+                .expect("explicit action must be recorded");
+            assert_eq!(last.action(), action);
+            assert_eq!(last.outcome(), ControllerActionOutcome::AcceptedUnconfirmed);
+            assert_eq!(
+                last.evidence(),
+                Some(PairBackendEvidence::BroadcastAcknowledgementOnly)
+            );
+            assert_eq!(last.failure(), None);
+            assert_eq!(last.revision(), initial_revision + 2);
+            assert!(last.age_ms() < 1_000);
+        }
     }
 
     #[test]

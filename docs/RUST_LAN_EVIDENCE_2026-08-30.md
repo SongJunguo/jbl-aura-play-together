@@ -158,6 +158,27 @@ in `15.89` seconds as accepted-unconfirmed/ready, with a clean final journal and
 `NRestarts=0`. The overall cold path is hardware-accepted within `150` seconds;
 the A2DP `wake_then_stable` subpath was not hit or separately proven. No phone
 App participated, but there is no ADB phone-state evidence.
+
+A later live counterexample showed why NativePair cannot use those projections
+as an idempotent predicate: status was managed linked, healthy/linked, transport
+`le`, route `fresh_le`, while Aura was silent; START returned idempotent without
+a write. Native START/STOP now always execute the backend. Corrective STOP
+returned `accepted_unconfirmed` in `46.71` seconds; the first START
+rejected-before-send clean in `49.76` seconds; one bounded retry returned
+`accepted_unconfirmed` in `48.56` seconds. The player was
+idle afterward, so silence was not initially a grouping result. Playback then
+resumed; JBL reported `state=playing`, `volume=20`, while the user confirmed
+JBL-only audio and a silent Aura. This ACK-only round failed acoustically. It
+does not overturn the two historical successes; it demonstrates instability.
+
+The JBL network source was then stopped and the existing Aura A2DP bridge
+started. The test player reported JBL idle/volume `20` and Aura playing/volume
+`20`. The initial two-speaker impression did not persist; after more than ten
+seconds, the user corrected the result to Aura audible and JBL silent. The
+transient second sound is possible residual buffering, not an acoustic pass or
+audio-sync conclusion. Aura playback and the bridge were stopped; both players
+ended idle and the bridge exited. Neither source direction sustained two-speaker
+audio in this regression.
 Artifact, installed-file and running-process digests matched. After restart and
 one read-only status, the enabled/active service had `NRestarts=0` and managed
 unknown/offline. Its `15`-second restart-idle sample was `8,828 KiB` RSS, one

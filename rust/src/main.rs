@@ -549,6 +549,8 @@ fn failure_name(value: LocalFailure) -> &'static str {
         LocalFailure::PairConfigurationUnavailable => "pair_configuration_unavailable",
         LocalFailure::ExpectedPairNotConfigured => "expected_pair_not_configured",
         LocalFailure::BackendRejectedBeforeSend => "backend_rejected_before_send",
+        LocalFailure::AuraInvalidConfiguration => "aura_invalid_configuration",
+        LocalFailure::AuraRuntimeUnavailable => "aura_runtime_unavailable",
         LocalFailure::AuraAdapterUnavailable => "aura_adapter_unavailable",
         LocalFailure::AuraDiscoveryUnavailable => "aura_discovery_unavailable",
         LocalFailure::AuraVerifiedAdvertisementNotFound => "aura_verified_advertisement_not_found",
@@ -560,6 +562,9 @@ fn failure_name(value: LocalFailure) -> &'static str {
         LocalFailure::WakeProfileReleaseFailed => "wake_profile_release_failed",
         LocalFailure::AuraGattProfileInvalid => "aura_gatt_profile_invalid",
         LocalFailure::AuraNotificationSetupFailed => "aura_notification_setup_failed",
+        LocalFailure::AuraTransportNotReady => "aura_transport_not_ready",
+        LocalFailure::AuraNotificationQueueInvalid => "aura_notification_queue_invalid",
+        LocalFailure::AuraDisconnectFailed => "aura_disconnect_failed",
         LocalFailure::AuraWriteUnknown => "aura_write_unknown",
         LocalFailure::AuraAckTimeout => "aura_ack_timeout",
         LocalFailure::AuraAckChannelClosed => "aura_ack_channel_closed",
@@ -717,6 +722,23 @@ mod tests {
     fn diagnostic_failure_labels_are_fixed_and_non_identifying() {
         for (failure, expected) in [
             (
+                LocalFailure::AuraInvalidConfiguration,
+                "aura_invalid_configuration",
+            ),
+            (
+                LocalFailure::AuraRuntimeUnavailable,
+                "aura_runtime_unavailable",
+            ),
+            (
+                LocalFailure::AuraTransportNotReady,
+                "aura_transport_not_ready",
+            ),
+            (
+                LocalFailure::AuraNotificationQueueInvalid,
+                "aura_notification_queue_invalid",
+            ),
+            (LocalFailure::AuraDisconnectFailed, "aura_disconnect_failed"),
+            (
                 LocalFailure::WakeProfileConnectFailed,
                 "wake_profile_connect_failed",
             ),
@@ -741,6 +763,22 @@ mod tests {
             (
                 LocalFailure::JblExitOutcomeUnknown,
                 "jbl_exit_outcome_unknown",
+            ),
+            (
+                LocalFailure::JblBroadcastResultTimedOut,
+                "jbl_broadcast_result_timed_out",
+            ),
+            (
+                LocalFailure::JblBroadcastResultUnavailable,
+                "jbl_broadcast_result_unavailable",
+            ),
+            (
+                LocalFailure::JblBroadcastResultRejected,
+                "jbl_broadcast_result_rejected",
+            ),
+            (
+                LocalFailure::AuraStartOutcomeUnknown,
+                "aura_start_outcome_unknown",
             ),
         ] {
             assert_eq!(failure_name(failure), expected);

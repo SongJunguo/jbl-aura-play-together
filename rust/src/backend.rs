@@ -296,6 +296,8 @@ pub enum PairBackendError {
     #[cfg(test)]
     InvalidTimeout,
     Unavailable,
+    AuraInvalidConfiguration,
+    AuraRuntimeUnavailable,
     AuraAdapterUnavailable,
     AuraDiscoveryUnavailable,
     AuraVerifiedAdvertisementNotFound,
@@ -307,6 +309,9 @@ pub enum PairBackendError {
     AuraWakeProfileReleaseFailed,
     AuraGattProfileInvalid,
     AuraNotificationSetupFailed,
+    AuraTransportNotReady,
+    AuraNotificationQueueInvalid,
+    AuraDisconnectFailed,
     AuraWriteUnknown,
     AuraAcknowledgementTimedOut,
     AuraAcknowledgementChannelClosed,
@@ -342,6 +347,8 @@ impl fmt::Display for PairBackendError {
             #[cfg(test)]
             Self::InvalidTimeout => "legacy backend timeout must be greater than zero",
             Self::Unavailable => "pair backend is unavailable",
+            Self::AuraInvalidConfiguration => "Aura transport configuration is invalid",
+            Self::AuraRuntimeUnavailable => "Aura async runtime is unavailable",
             Self::AuraAdapterUnavailable => "Aura Bluetooth adapter is unavailable",
             Self::AuraDiscoveryUnavailable => "Aura Bluetooth discovery is unavailable",
             Self::AuraVerifiedAdvertisementNotFound => {
@@ -355,6 +362,9 @@ impl fmt::Display for PairBackendError {
             Self::AuraWakeProfileReleaseFailed => "Aura wake A2DP profile release failed",
             Self::AuraGattProfileInvalid => "Aura vendor GATT profile was unavailable or invalid",
             Self::AuraNotificationSetupFailed => "Aura notification setup failed",
+            Self::AuraTransportNotReady => "Aura control transport is not ready",
+            Self::AuraNotificationQueueInvalid => "Aura notification queue is invalid",
+            Self::AuraDisconnectFailed => "Aura transport disconnect failed",
             Self::AuraWriteUnknown => "Aura write outcome is unknown",
             Self::AuraAcknowledgementTimedOut => "Aura acknowledgement timed out",
             Self::AuraAcknowledgementChannelClosed => "Aura acknowledgement channel closed",

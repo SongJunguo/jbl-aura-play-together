@@ -77,6 +77,24 @@ configuration therefore has a closed
 `broadcast_business_notification`. Managed `linked` records the last accepted
 controller action and is never, by itself, a 7951 or acoustic claim.
 
+NativePair START/STOP never use an idempotent shortcut. Managed linked/ready,
+healthy matching lifecycle, verified membership and a resolved Aura route do
+not prove current device roles, so every native START/STOP executes the backend.
+Only the Legacy held session retains same-session idempotence. Repeated shutdown
+after managed offline remains a local no-op.
+
+The live counterexample returned native START as idempotent without writing and
+left only JBL audible. Corrective STOP returned `accepted_unconfirmed` in
+`46.71` seconds; the first
+real START rejected-before-send clean in `49.76` seconds, and one bounded retry
+returned `accepted_unconfirmed` in `48.56` seconds. The player was idle
+immediately afterward, so
+two-speaker silence was not initially a grouping result. Playback then resumed;
+JBL reported `state=playing`, `volume=20`, while the user confirmed JBL-only
+audio and a silent Aura. This ACK-only accepted START failed its acoustic check.
+It does not erase the two historical successful Rust rounds; it shows that the
+current compatibility transaction is unstable.
+
 The deep-standby HCI trace shows Android BR/EDR A2DP auto reconnect, stored
 link-key authentication/encryption and AVDTP Open before FDDF appears about
 `2.5` seconds later; App LE reads occur later still. The wake module is now in

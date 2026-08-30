@@ -207,6 +207,51 @@ This verifies the overall production no-button cold path inside the shared
 is control-plane only: there was no active audio stream, `7951` was not observed,
 and no acoustic or BASS/ISO claim follows.
 
+## Native false-idempotent counterexample
+
+On 2026-08-30, native status reported managed `linked`, healthy/linked backend
+state, Aura transport `le` and acquisition route `fresh_le`, yet Aura was
+silent. A subsequent native START returned idempotent without a device write;
+only JBL remained audible. This disproves using any NativePair managed/health/
+lifecycle/route projection as permission to skip START or STOP.
+
+The corrective live sequence then obtained a real STOP returning
+`accepted_unconfirmed` in `46.71` seconds. The first actual START attempt ran for
+`49.76` seconds and was rejected before send with a clean journal. One bounded
+retry completed in `48.56` seconds as `accepted_unconfirmed`. The test player
+was idle at that point, so both speakers being
+silent is not a grouping failure. Playback was resumed directly through Music
+Assistant. JBL then reported `state=playing`, `volume=20`, but the user confirmed
+that only JBL was audible and Aura remained silent. This round's ACK-only
+accepted START therefore failed its acoustic check. It does not invalidate the
+two historical successful Rust rounds; it proves the current compatibility
+transaction is unstable.
+
+The resulting rule is categorical: NativePair START and STOP always execute the
+backend transaction. Only Legacy held-session START/STOP may remain same-session
+idempotent. Repeated shutdown after managed offline remains a local no-op.
+
+## Aura-source sustained check
+
+After the corrective ACK-only START failed acoustically with JBL playing at
+volume `20` and Aura silent, the JBL network source was stopped. The existing
+Aura A2DP bridge was then started. The test player reported JBL
+idle at volume `20` and the Aura player playing at volume `20`. The initial
+impression that both speakers were audible did not persist. After more than ten
+seconds of continued listening, the user corrected the result to Aura audible
+and JBL silent.
+
+Only the Aura player carried an active source, so this was not Linux-side
+dual-output playback. The transient second sound is treated as possible residual
+buffering, not a relay result or an audio-sync finding.
+
+Compatibility START role state already existed before this source switch, but
+the sustained acoustic check failed regardless: Aura continued alone and JBL
+did not. The Aura test source and A2DP bridge were stopped; both players ended
+idle and the bridge exited. Neither source direction produced sustained
+two-speaker audio in this regression. The two historical JBL-source Rust
+successes remain valid, while current compatibility behavior is unstable.
+
 The current offline gate totals are `258` library tests plus `8` CLI tests
 (`266` main), plus the FIFO private-file helper gate `1/1`.
 Audit, dependency-deny, fallback and privacy gates pass; compatibility evidence
@@ -414,6 +459,13 @@ marker retained; it no longer keeps the control supervisor alive.
 | Successful shutdown masks `AcceptFailed` or clears pending | Original accept error is preserved; pending journal remains authoritative | Refuted by release fixture |
 | Explicit Rust recovery is identity-bound | Stable public object triggered BlueZ connection; unique connected random object passed exact FDDF PID/stable-identity matching before accepted STOP normalization | Verified on this pair |
 | Native Rust start/stop reaches accepted lifecycle | Accepted actions plus managed linked/ready transitions | Verified on this pair |
+| Native managed linked + healthy lifecycle + resolved route permits idempotent START/STOP | Idempotent START sent no write while Aura was silent | Refuted by live counterexample |
+| Corrective native lifecycle executed real writes | STOP `accepted_unconfirmed` at `46.71` s; first START rejected-before-send clean at `49.76` s; one bounded retry `accepted_unconfirmed` at `48.56` s | Observed |
+| Idle silence immediately after accepted retry proves grouping failure | Test player was idle | Refuted; later playing/volume `20` check established JBL-only acoustic failure |
+| Single Aura-source playback sustains both speakers | After more than ten seconds, Aura audible and JBL silent | Refuted for this round |
+| Initial two-speaker impression proves relay | Sound was transient and may be residual buffering | Refuted; not an acoustic pass |
+| Aura-source result establishes an audio-sync requirement | Only Aura player was active; sustained relay failed | Not established |
+| JBL-source compatibility path is consistently stable | Two historical successes plus the latest JBL-only failure | Refuted as a stability claim |
 | Native Rust no-button cold start can repeat | Two rounds; managed transport reported `br_edr` first and ended `le` second | Verified on this pair; not a reliability rate or identity shortcut |
 | Persistent native session provides fast normal STOP | Retained-session STOP completed in approximately 0.44 and 0.57 seconds | Verified on this host |
 | Approximately 03:45 old-minimal acoustic attempt proves protocol failure | Home Centre issued an automatic STOP in the same experimental window | Invalidated by concurrent-writer contamination |
@@ -440,7 +492,7 @@ marker retained; it no longer keeps the control supervisor alive.
 | Managed `linked` proves `7951` or audibility | It records the last accepted controller action | Refuted |
 | First-round normal STOP passed | `outcome_unknown`, `failure=aura_ack_timeout` | Refuted; explicit recovery succeeded within `13` seconds |
 | Post-fix round-two normal STOP returns ready | Playback idle; ordinary STOP accepted/`ready` in approximately `43` seconds | Verified once, no recovery |
-| More acoustic rounds are required by the agreed gate | User requested stopping after two successful rounds | Refuted; sound testing stopped |
+| Corrective retry formed an audible link after playback resumed | JBL `state=playing`, `volume=20`; user heard only JBL and a silent Aura | Refuted for this ACK-only round; historical two successes retained |
 | No-button cold control completes within the production deadline | START `122.15` s via `fresh_le`; STOP `15.89` s; clean journal; `NRestarts=0` | Verified for one silent hardware round |
 | App LE caused the observed deep-standby wake | A2DP reconnect, stored-key auth/encryption and AVDTP Open preceded FDDF by about `2.5` seconds | Refuted |
 | Wake module is production-integrated | Default cold path and shared `150`-second deadline are in the neutral artifact; offline gates pass | Verified offline |

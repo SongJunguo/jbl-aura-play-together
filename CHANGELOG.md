@@ -21,6 +21,27 @@
   one `shutdown_for_exit` on normal and abnormal listener exit. Device-safety
   errors take precedence; when shutdown succeeds, the original `AcceptFailed`
   remains visible, and a pending journal is never cleared by this path.
+- Remove NativePair START/STOP idempotent shortcuts. Managed linked/ready,
+  healthy matching lifecycle, verified membership and a resolved Aura route do
+  not prove device roles; every native START/STOP now executes the backend.
+  Legacy held-session idempotence and offline shutdown no-op remain.
+- Record the live counterexample and corrective sequence: false-idempotent START
+  sent no write and left only JBL audible; real STOP returned
+  `accepted_unconfirmed` in `46.71` seconds;
+  the first real START rejected-before-send clean at `49.76` seconds; one bounded
+  retry returned `accepted_unconfirmed` in `48.56` seconds. The player was idle
+  after retry, so silence
+  was not initially a grouping result. After playback resumed, JBL reported
+  playing at volume `20`, but the user confirmed JBL-only audio and a silent
+  Aura. Record this ACK-only round as an acoustic failure without overturning
+  the two historical successful Rust rounds; the compatibility transaction is
+  unstable.
+- Record the Aura-source sustained negative: after stopping the JBL network
+  source and starting the existing Aura A2DP bridge, the test player reported
+  JBL idle/volume `20` and Aura playing/volume `20`. An initial impression of
+  two-speaker audio did not persist; after more than ten seconds only Aura was
+  audible. Treat the transient as possible residual buffering, not an acoustic
+  pass or a reason to restore dual-output audio-sync calibration.
 - Prefer the exact paired/trusted stable Aura bearer with bounded retries, map
   it only to a unique connected random GATT object carrying the expected FDDF
   PID and stable identity, and retain strict live FDDF LE discovery as fallback.

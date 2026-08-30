@@ -24,6 +24,24 @@ JBL 的 ATT 传输接受了承载 OneOS `7957 action=1` 的写入，琉璃 5 接
 收到匹配的 GENA
 动作 33/34 才返回 `accepted` 和 `broadcast_business_notification`。managed `linked`
 只表示最近一次被控制器接受的动作，不等同于 `7951` 或声学证明。
+它也不能授权 NativePair 幂等快路：无论 managed state、health/lifecycle、成员 verified
+或 Aura route 看起来多一致，native START/STOP 都必须执行 backend；只保留 Legacy held
+session 同 session 幂等，以及 managed offline 后重复 shutdown 的本地 no-op。
+
+实机反例中 native START false-idempotent、未写设备，只有 JBL 响。纠正后真实 STOP
+`46.71` 秒返回 `accepted_unconfirmed`；首次真实 START `49.76` 秒写前拒绝且 journal
+clean；单次有界 retry `48.56` 秒返回 `accepted_unconfirmed`。随后测试播放器处于
+idle，所以两台都无声不能判为组网失败；已直接恢复网络音源播放，JBL
+`state=playing`、`volume=20` 后用户确认仍只有 JBL 响、Aura 无声。
+因此本轮 ACK-only accepted START 没有形成可听联动。这不推翻历史两轮 Rust 双响，
+只证明当前 compatibility transaction 不稳定。
+
+随后在不宣称新控制事务的前提下切换音源：停止 JBL 网络音源，启动已有 Aura A2DP
+bridge。测试播放器状态为 JBL idle/volume `20`、Aura player
+playing/volume `20`。最初“两台都响”的听感没有持续；继续听十几秒后用户更正为 Aura
+响、JBL 不响。该瞬态只记为疑似残余缓冲，不能算声学通过。随后已停止 Aura 测试音源
+与 A2DP bridge，最终两个 player 均 idle、bridge exited。因此本轮两个音源方向都没有
+持续双响，不宣称新的实用方案。
 
 窄 callback 防火墙规则已获授权并由用户安装，但 production strict START 仍以
 `jbl_broadcast_result_timed_out` 结束，随后用 legacy GATT 归一化；规则不是协议成功

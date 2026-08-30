@@ -27,6 +27,34 @@ only a matching
 GENA action 33/34 reports `accepted` plus
 `broadcast_business_notification`. A managed `linked` state describes the last
 accepted controller action, not a 7951 or acoustic proof.
+It is also not permission for a NativePair idempotent shortcut: native START
+and STOP always execute the backend, regardless of managed state, health,
+lifecycle, verified membership or resolved Aura route. Only the Legacy held
+session retains same-session idempotence; repeated offline shutdown is a local
+no-op.
+
+The live counterexample returned native START as idempotent without a write
+while only JBL was audible. Corrective STOP returned `accepted_unconfirmed` in
+`46.71` seconds; the
+first real START rejected-before-send clean in `49.76` seconds, and one bounded
+retry returned `accepted_unconfirmed` in `48.56` seconds. The test player was idle immediately after
+the retry, so both speakers being silent is not a grouping failure. Playback
+was then resumed directly; JBL reported `state=playing`, `volume=20`, but the
+user confirmed that only JBL was audible and Aura remained silent. This round's
+ACK-only accepted START did not form an audible link. It does not overturn the
+two historical successful Rust rounds; it demonstrates that the current
+compatibility transaction is not stable.
+
+The source was then changed without claiming a new control transaction: the JBL
+network source was stopped and the existing Aura A2DP bridge was started. The
+test player reported JBL idle at volume `20` and Aura playing at volume
+`20`. An initial impression that both speakers were audible did not persist;
+after sustained listening for more than ten seconds, the user corrected the
+result to Aura-only audio with JBL silent. The transient second sound is treated
+as possible residual buffering, not an acoustic pass. The Aura queue and bridge
+were stopped; both players ended idle and the bridge exited. Thus neither source
+direction produced sustained two-speaker audio in this regression, and no new
+practical solution is claimed.
 
 The narrow callback firewall rule was explicitly authorized and installed, but
 strict production START still ended `jbl_broadcast_result_timed_out` and was

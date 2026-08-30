@@ -549,9 +549,6 @@ impl<J: JblRoleControl, A: AuraRoleControl, O: BroadcastResultObserver> NativePa
         if let Some(failure) = self.unresolved {
             return PairActionResult::OutcomeUnknown(failure);
         }
-        if self.lifecycle == PairLifecycle::Linked && self.aura.health() == AuraHealth::Ready {
-            return self.accepted(PairLifecycle::Linked, true);
-        }
         if let Err(error) = self.acquire_fresh_aura_bearer() {
             self.lifecycle = PairLifecycle::Degraded;
             return self.rejected(error, Some(PairLifecycle::Degraded));
@@ -628,9 +625,6 @@ impl<J: JblRoleControl, A: AuraRoleControl, O: BroadcastResultObserver> NativePa
     fn stop(&mut self) -> PairActionResult {
         if let Some(failure) = self.unresolved {
             return PairActionResult::OutcomeUnknown(failure);
-        }
-        if self.lifecycle == PairLifecycle::Ready && self.aura.health() == AuraHealth::Ready {
-            return self.accepted(PairLifecycle::Ready, true);
         }
         if let Err(error) = self.acquire_fresh_aura_bearer() {
             self.lifecycle = PairLifecycle::Degraded;
@@ -751,9 +745,7 @@ impl<J: JblRoleControl, A: AuraRoleControl, O: BroadcastResultObserver> NativePa
         // non-idempotent transaction therefore begins from an empty bearer
         // slot and performs one fresh, verified acquisition before any role
         // mutation. Shutdown is transport-only and emits no AA/JBL command.
-        self.aura
-            .shutdown()
-            .map_err(|_| PairBackendError::Unavailable)?;
+        self.aura.shutdown().map_err(map_aura_transport_error)?;
         self.aura
             .connect_verified(self.aura_identity)
             .map_err(map_aura_transport_error)
@@ -818,6 +810,8 @@ impl<J: JblRoleControl, A: AuraRoleControl, O: BroadcastResultObserver> NativePa
 
 fn map_aura_transport_error(error: AuraTransportError) -> PairBackendError {
     match error.reason() {
+        AuraFailureReason::InvalidConfiguration => PairBackendError::AuraInvalidConfiguration,
+        AuraFailureReason::RuntimeUnavailable => PairBackendError::AuraRuntimeUnavailable,
         AuraFailureReason::AdapterUnavailable | AuraFailureReason::AdapterPoweredOff => {
             PairBackendError::AuraAdapterUnavailable
         }
@@ -837,15 +831,19 @@ fn map_aura_transport_error(error: AuraTransportError) -> PairBackendError {
         }
         AuraFailureReason::GattProfileInvalid => PairBackendError::AuraGattProfileInvalid,
         AuraFailureReason::NotificationSetupFailed => PairBackendError::AuraNotificationSetupFailed,
-        AuraFailureReason::InvalidConfiguration
-        | AuraFailureReason::RuntimeUnavailable
-        | AuraFailureReason::TransportNotReady
-        | AuraFailureReason::NotificationQueueInvalid
-        | AuraFailureReason::WriteFailed
-        | AuraFailureReason::AcknowledgementTimedOut
-        | AuraFailureReason::AcknowledgementChannelClosed
-        | AuraFailureReason::UnexpectedAcknowledgement
-        | AuraFailureReason::DisconnectFailed => PairBackendError::Unavailable,
+        AuraFailureReason::TransportNotReady => PairBackendError::AuraTransportNotReady,
+        AuraFailureReason::NotificationQueueInvalid => {
+            PairBackendError::AuraNotificationQueueInvalid
+        }
+        AuraFailureReason::WriteFailed => PairBackendError::AuraWriteUnknown,
+        AuraFailureReason::AcknowledgementTimedOut => PairBackendError::AuraAcknowledgementTimedOut,
+        AuraFailureReason::AcknowledgementChannelClosed => {
+            PairBackendError::AuraAcknowledgementChannelClosed
+        }
+        AuraFailureReason::UnexpectedAcknowledgement => {
+            PairBackendError::AuraUnexpectedAcknowledgement
+        }
+        AuraFailureReason::DisconnectFailed => PairBackendError::AuraDisconnectFailed,
     }
 }
 
@@ -859,23 +857,32 @@ fn map_aura_action_unknown(failure: crate::aura_bluez::AuraActionFailure) -> Pai
         AuraFailureReason::UnexpectedAcknowledgement => {
             PairBackendError::AuraUnexpectedAcknowledgement
         }
-        AuraFailureReason::InvalidConfiguration
-        | AuraFailureReason::RuntimeUnavailable
-        | AuraFailureReason::AdapterUnavailable
-        | AuraFailureReason::AdapterPoweredOff
-        | AuraFailureReason::DiscoveryUnavailable
-        | AuraFailureReason::VerifiedAdvertisementNotFound
-        | AuraFailureReason::DeviceConnectionFailed
-        | AuraFailureReason::WakeProfileConnectFailed
-        | AuraFailureReason::WakeFddfTimedOut
-        | AuraFailureReason::WakeFddfInvalid
-        | AuraFailureReason::WakeFddfUnavailable
-        | AuraFailureReason::WakeProfileReleaseFailed
-        | AuraFailureReason::GattProfileInvalid
-        | AuraFailureReason::NotificationSetupFailed
-        | AuraFailureReason::TransportNotReady
-        | AuraFailureReason::NotificationQueueInvalid
-        | AuraFailureReason::DisconnectFailed => PairBackendError::Unavailable,
+        AuraFailureReason::InvalidConfiguration => PairBackendError::AuraInvalidConfiguration,
+        AuraFailureReason::RuntimeUnavailable => PairBackendError::AuraRuntimeUnavailable,
+        AuraFailureReason::AdapterUnavailable | AuraFailureReason::AdapterPoweredOff => {
+            PairBackendError::AuraAdapterUnavailable
+        }
+        AuraFailureReason::DiscoveryUnavailable => PairBackendError::AuraDiscoveryUnavailable,
+        AuraFailureReason::VerifiedAdvertisementNotFound => {
+            PairBackendError::AuraVerifiedAdvertisementNotFound
+        }
+        AuraFailureReason::DeviceConnectionFailed => PairBackendError::AuraDeviceConnectionFailed,
+        AuraFailureReason::WakeProfileConnectFailed => {
+            PairBackendError::AuraWakeProfileConnectFailed
+        }
+        AuraFailureReason::WakeFddfTimedOut => PairBackendError::AuraWakeFddfTimedOut,
+        AuraFailureReason::WakeFddfInvalid => PairBackendError::AuraWakeFddfInvalid,
+        AuraFailureReason::WakeFddfUnavailable => PairBackendError::AuraWakeFddfUnavailable,
+        AuraFailureReason::WakeProfileReleaseFailed => {
+            PairBackendError::AuraWakeProfileReleaseFailed
+        }
+        AuraFailureReason::GattProfileInvalid => PairBackendError::AuraGattProfileInvalid,
+        AuraFailureReason::NotificationSetupFailed => PairBackendError::AuraNotificationSetupFailed,
+        AuraFailureReason::TransportNotReady => PairBackendError::AuraTransportNotReady,
+        AuraFailureReason::NotificationQueueInvalid => {
+            PairBackendError::AuraNotificationQueueInvalid
+        }
+        AuraFailureReason::DisconnectFailed => PairBackendError::AuraDisconnectFailed,
     }
 }
 
@@ -953,6 +960,15 @@ mod tests {
             PairActionResult::OutcomeUnknown(failure) => failure.reason(),
             PairActionResult::Accepted(_) | PairActionResult::RejectedBeforeSend(_) => {
                 panic!("fixture must be outcome-unknown")
+            }
+        }
+    }
+
+    fn rejected_reason(result: PairActionResult) -> PairBackendError {
+        match result {
+            PairActionResult::RejectedBeforeSend(failure) => failure.reason(),
+            PairActionResult::Accepted(_) | PairActionResult::OutcomeUnknown(_) => {
+                panic!("fixture must be rejected before send")
             }
         }
     }
@@ -1529,6 +1545,103 @@ mod tests {
     }
 
     #[test]
+    fn every_aura_transport_failure_maps_to_a_closed_backend_stage() {
+        for (reason, expected) in [
+            (
+                AuraFailureReason::InvalidConfiguration,
+                PairBackendError::AuraInvalidConfiguration,
+            ),
+            (
+                AuraFailureReason::RuntimeUnavailable,
+                PairBackendError::AuraRuntimeUnavailable,
+            ),
+            (
+                AuraFailureReason::AdapterUnavailable,
+                PairBackendError::AuraAdapterUnavailable,
+            ),
+            (
+                AuraFailureReason::AdapterPoweredOff,
+                PairBackendError::AuraAdapterUnavailable,
+            ),
+            (
+                AuraFailureReason::DiscoveryUnavailable,
+                PairBackendError::AuraDiscoveryUnavailable,
+            ),
+            (
+                AuraFailureReason::VerifiedAdvertisementNotFound,
+                PairBackendError::AuraVerifiedAdvertisementNotFound,
+            ),
+            (
+                AuraFailureReason::DeviceConnectionFailed,
+                PairBackendError::AuraDeviceConnectionFailed,
+            ),
+            (
+                AuraFailureReason::WakeProfileConnectFailed,
+                PairBackendError::AuraWakeProfileConnectFailed,
+            ),
+            (
+                AuraFailureReason::WakeFddfTimedOut,
+                PairBackendError::AuraWakeFddfTimedOut,
+            ),
+            (
+                AuraFailureReason::WakeFddfInvalid,
+                PairBackendError::AuraWakeFddfInvalid,
+            ),
+            (
+                AuraFailureReason::WakeFddfUnavailable,
+                PairBackendError::AuraWakeFddfUnavailable,
+            ),
+            (
+                AuraFailureReason::WakeProfileReleaseFailed,
+                PairBackendError::AuraWakeProfileReleaseFailed,
+            ),
+            (
+                AuraFailureReason::GattProfileInvalid,
+                PairBackendError::AuraGattProfileInvalid,
+            ),
+            (
+                AuraFailureReason::NotificationSetupFailed,
+                PairBackendError::AuraNotificationSetupFailed,
+            ),
+            (
+                AuraFailureReason::TransportNotReady,
+                PairBackendError::AuraTransportNotReady,
+            ),
+            (
+                AuraFailureReason::NotificationQueueInvalid,
+                PairBackendError::AuraNotificationQueueInvalid,
+            ),
+            (
+                AuraFailureReason::WriteFailed,
+                PairBackendError::AuraWriteUnknown,
+            ),
+            (
+                AuraFailureReason::AcknowledgementTimedOut,
+                PairBackendError::AuraAcknowledgementTimedOut,
+            ),
+            (
+                AuraFailureReason::AcknowledgementChannelClosed,
+                PairBackendError::AuraAcknowledgementChannelClosed,
+            ),
+            (
+                AuraFailureReason::UnexpectedAcknowledgement,
+                PairBackendError::AuraUnexpectedAcknowledgement,
+            ),
+            (
+                AuraFailureReason::DisconnectFailed,
+                PairBackendError::AuraDisconnectFailed,
+            ),
+        ] {
+            assert_eq!(
+                map_aura_transport_error(AuraTransportError::from_reason_for_test(reason)),
+                expected
+            );
+            assert_ne!(expected, PairBackendError::Unavailable);
+            assert!(!expected.to_string().contains(':'));
+        }
+    }
+
+    #[test]
     fn gena_failures_map_to_a_closed_privacy_safe_result_vocabulary() {
         assert_eq!(
             map_gena_failure(GenaFailure::CallbackTimedOut),
@@ -1564,10 +1677,10 @@ mod tests {
         );
         let mut core = core(Vec::new(), Vec::new(), observer, Rc::clone(&trace));
 
-        assert!(matches!(
-            core.start(),
-            PairActionResult::RejectedBeforeSend(_)
-        ));
+        assert_eq!(
+            rejected_reason(core.start()),
+            PairBackendError::JblBroadcastResultUnavailable
+        );
         assert!(core.jbl.commands.borrow().is_empty());
         assert!(core.aura.commands.is_empty());
         assert_eq!(
@@ -1583,10 +1696,10 @@ mod tests {
         let mut core = core(Vec::new(), Vec::new(), observer, Rc::clone(&trace));
         core.aura.next_shutdown_failure = Some(AuraFailureReason::DisconnectFailed);
 
-        assert!(matches!(
-            core.start(),
-            PairActionResult::RejectedBeforeSend(_)
-        ));
+        assert_eq!(
+            rejected_reason(core.start()),
+            PairBackendError::AuraDisconnectFailed
+        );
         assert_eq!(trace.borrow().as_slice(), ["transport_teardown"]);
         assert!(core.jbl.commands.borrow().is_empty());
         assert!(core.aura.commands.is_empty());
@@ -1615,17 +1728,106 @@ mod tests {
     }
 
     #[test]
-    fn idempotent_fast_path_does_not_replace_a_ready_bearer() {
+    fn repeated_explicit_start_reacquires_and_writes_every_device_role() {
         let trace = Rc::new(RefCell::new(Vec::new()));
-        let observer = MockObserver::ack_only(Rc::clone(&trace));
-        let mut core = core(Vec::new(), Vec::new(), observer, Rc::clone(&trace));
-        core.lifecycle = PairLifecycle::Linked;
-        core.aura.health = AuraHealth::Ready;
+        let observer = MockObserver::with(
+            vec![Ok(()), Ok(())],
+            vec![
+                Ok(BroadcastResultEvidence::AckOnly),
+                Ok(BroadcastResultEvidence::AckOnly),
+            ],
+            Rc::clone(&trace),
+        );
+        let mut core = core(
+            vec![accepted(), accepted()],
+            vec![AuraActionResult::Accepted, AuraActionResult::Accepted],
+            observer,
+            Rc::clone(&trace),
+        );
 
-        let receipt = core.start().receipt().expect("START should be idempotent");
-        assert!(receipt.is_idempotent());
-        assert!(trace.borrow().is_empty());
-        assert_eq!(core.aura.shutdown_calls, 0);
+        for _ in 0..2 {
+            let receipt = core.start().receipt().expect("explicit START should run");
+            assert!(!receipt.is_idempotent());
+            assert_eq!(
+                receipt.evidence(),
+                PairBackendEvidence::BroadcastAcknowledgementOnly
+            );
+        }
+        assert_eq!(
+            trace.borrow().as_slice(),
+            [
+                "transport_teardown",
+                "aura_connect",
+                "observer_arm_start",
+                "jbl_enter",
+                "gatt_7957_start",
+                "aura_on",
+                "transport_teardown",
+                "aura_connect",
+                "observer_arm_start",
+                "jbl_enter",
+                "gatt_7957_start",
+                "aura_on",
+            ]
+        );
+        assert_eq!(core.aura.shutdown_calls, 2);
+        assert_eq!(
+            core.jbl.commands.borrow().as_slice(),
+            [JblCommand::Enter, JblCommand::Enter]
+        );
+        assert_eq!(core.aura.commands, ["on", "on"]);
+    }
+
+    #[test]
+    fn repeated_explicit_stop_reacquires_and_writes_every_device_role() {
+        let trace = Rc::new(RefCell::new(Vec::new()));
+        let observer = MockObserver::with(
+            vec![Ok(()), Ok(())],
+            vec![
+                Ok(BroadcastResultEvidence::AckOnly),
+                Ok(BroadcastResultEvidence::AckOnly),
+            ],
+            Rc::clone(&trace),
+        );
+        let mut core = core(
+            vec![accepted(), accepted()],
+            vec![AuraActionResult::Accepted, AuraActionResult::Accepted],
+            observer,
+            Rc::clone(&trace),
+        );
+        core.lifecycle = PairLifecycle::Linked;
+
+        for _ in 0..2 {
+            let receipt = core.stop().receipt().expect("explicit STOP should run");
+            assert!(!receipt.is_idempotent());
+            assert_eq!(
+                receipt.evidence(),
+                PairBackendEvidence::BroadcastAcknowledgementOnly
+            );
+        }
+        assert_eq!(
+            trace.borrow().as_slice(),
+            [
+                "transport_teardown",
+                "aura_connect",
+                "observer_arm_stop",
+                "aura_off",
+                "gatt_7957_stop",
+                "jbl_exit",
+                "transport_teardown",
+                "aura_connect",
+                "observer_arm_stop",
+                "aura_off",
+                "gatt_7957_stop",
+                "jbl_exit",
+            ]
+        );
+        assert_eq!(core.aura.shutdown_calls, 2);
+        assert_eq!(
+            core.jbl.commands.borrow().as_slice(),
+            [JblCommand::Exit, JblCommand::Exit]
+        );
+        assert_eq!(core.aura.commands, ["off", "off"]);
     }
 
     #[test]

@@ -226,6 +226,8 @@ pub enum LocalFailure {
     PairConfigurationUnavailable,
     ExpectedPairNotConfigured,
     BackendRejectedBeforeSend,
+    AuraInvalidConfiguration,
+    AuraRuntimeUnavailable,
     AuraAdapterUnavailable,
     AuraDiscoveryUnavailable,
     AuraVerifiedAdvertisementNotFound,
@@ -237,6 +239,9 @@ pub enum LocalFailure {
     WakeProfileReleaseFailed,
     AuraGattProfileInvalid,
     AuraNotificationSetupFailed,
+    AuraTransportNotReady,
+    AuraNotificationQueueInvalid,
+    AuraDisconnectFailed,
     AuraWriteUnknown,
     AuraAckTimeout,
     AuraAckChannelClosed,
@@ -397,7 +402,10 @@ impl LocalServiceClient {
         }
         let result: LocalActionResult = serde_json::from_slice(&response.body)
             .map_err(|_| LocalClientError::InvalidResponse)?;
-        if result.action != expected_action || result.revision <= status.revision {
+        if result.action != expected_action
+            || result.revision <= status.revision
+            || !valid_action_projection(&result)
+        {
             return Err(LocalClientError::InvalidResponse);
         }
         let response_etag = format!("\"{}\"", result.revision);
@@ -485,9 +493,10 @@ fn valid_status_projection(status: &LocalStatus) -> bool {
             .members
             .iter()
             .any(|member| !valid_member_projection(member))
-        || status
-            .last_action
-            .is_some_and(|action| action.revision > status.revision)
+        || status.last_action.is_some_and(|action| {
+            action.revision > status.revision
+                || !valid_outcome_projection(action.outcome, action.evidence, action.failure)
+        })
         || status
             .backend_health
             .is_some_and(|health| !valid_health_projection(health))
@@ -507,6 +516,61 @@ fn valid_status_projection(status: &LocalStatus) -> bool {
             .members
             .iter()
             .all(|member| member.verification == LocalPairMemberVerification::Unavailable),
+    }
+}
+
+fn valid_action_projection(result: &LocalActionResult) -> bool {
+    if !valid_outcome_projection(result.outcome, result.evidence, result.failure) {
+        return false;
+    }
+    if result.outcome == LocalActionOutcome::Idempotent
+        && result.action == LocalActionName::RecoverStop
+    {
+        return false;
+    }
+    let expected_success_state = match result.action {
+        LocalActionName::Start => LocalManagedState::Linked,
+        LocalActionName::Stop | LocalActionName::RecoverStop => LocalManagedState::Ready,
+        LocalActionName::Shutdown => LocalManagedState::Offline,
+    };
+    match result.outcome {
+        LocalActionOutcome::Accepted
+        | LocalActionOutcome::AcceptedUnconfirmed
+        | LocalActionOutcome::Idempotent => result.managed_state == expected_success_state,
+        LocalActionOutcome::OutcomeUnknown | LocalActionOutcome::PostconditionFailed => {
+            result.managed_state == LocalManagedState::Unknown
+        }
+        LocalActionOutcome::RejectedBeforeSend => !matches!(
+            result.managed_state,
+            LocalManagedState::Linking
+                | LocalManagedState::Unlinking
+                | LocalManagedState::Recovering
+                | LocalManagedState::ShuttingDown
+        ),
+    }
+}
+
+fn valid_outcome_projection(
+    outcome: LocalActionOutcome,
+    evidence: Option<LocalActionEvidence>,
+    failure: Option<LocalFailure>,
+) -> bool {
+    match outcome {
+        LocalActionOutcome::Accepted => {
+            failure.is_none()
+                && evidence
+                    .is_some_and(|value| value != LocalActionEvidence::BroadcastAcknowledgementOnly)
+        }
+        LocalActionOutcome::AcceptedUnconfirmed => {
+            evidence == Some(LocalActionEvidence::BroadcastAcknowledgementOnly) && failure.is_none()
+        }
+        LocalActionOutcome::Idempotent => evidence.is_none() && failure.is_none(),
+        LocalActionOutcome::RejectedBeforeSend | LocalActionOutcome::OutcomeUnknown => {
+            evidence.is_none() && failure.is_some()
+        }
+        LocalActionOutcome::PostconditionFailed => {
+            evidence.is_none() && failure == Some(LocalFailure::MembershipPostconditionFailed)
+        }
     }
 }
 
@@ -833,7 +897,7 @@ mod tests {
                 response(
                     "200 OK",
                     "Content-Type: application/json\r\nETag: \"9\"\r\n",
-                    r#"{"action":"start","outcome":"accepted","managed_state":"linked","failure":null,"revision":9}"#,
+                    r#"{"action":"start","outcome":"accepted","managed_state":"linked","evidence":"lifecycle_acknowledgement","failure":null,"revision":9}"#,
                 ),
             ];
             for reply in replies {
@@ -983,6 +1047,23 @@ mod tests {
         assert_eq!(parsed.headers["etag"], "\"9\"");
 
         for (label, expected) in [
+            (
+                "aura_invalid_configuration",
+                LocalFailure::AuraInvalidConfiguration,
+            ),
+            (
+                "aura_runtime_unavailable",
+                LocalFailure::AuraRuntimeUnavailable,
+            ),
+            (
+                "aura_transport_not_ready",
+                LocalFailure::AuraTransportNotReady,
+            ),
+            (
+                "aura_notification_queue_invalid",
+                LocalFailure::AuraNotificationQueueInvalid,
+            ),
+            ("aura_disconnect_failed", LocalFailure::AuraDisconnectFailed),
             ("aura_write_unknown", LocalFailure::AuraWriteUnknown),
             ("aura_ack_timeout", LocalFailure::AuraAckTimeout),
             (
@@ -997,6 +1078,22 @@ mod tests {
             (
                 "jbl_exit_outcome_unknown",
                 LocalFailure::JblExitOutcomeUnknown,
+            ),
+            (
+                "jbl_broadcast_result_timed_out",
+                LocalFailure::JblBroadcastResultTimedOut,
+            ),
+            (
+                "jbl_broadcast_result_unavailable",
+                LocalFailure::JblBroadcastResultUnavailable,
+            ),
+            (
+                "jbl_broadcast_result_rejected",
+                LocalFailure::JblBroadcastResultRejected,
+            ),
+            (
+                "aura_start_outcome_unknown",
+                LocalFailure::AuraStartOutcomeUnknown,
             ),
         ] {
             let body = format!(
@@ -1019,6 +1116,56 @@ mod tests {
         let future_action = br#"{"backend":"native_pair","pair_configuration":"ready","members":[{"name":"JBL Authentics 300","verification":"verified","channels":["stereo"]},{"name":"Aura Studio 5","verification":"verified","channels":["mono"]}],"managed_state":"ready","backend_health":null,"unresolved_action":false,"consecutive_failures":0,"revision":7,"last_action":{"action":"start","outcome":"accepted","evidence":"broadcast_business_notification","failure":null,"revision":8,"age_ms":0}}"#;
         let future_action: LocalStatus = serde_json::from_slice(future_action).unwrap();
         assert!(!valid_status_projection(&future_action));
+
+        let honest_unconfirmed = br#"{"backend":"native_pair","pair_configuration":"ready","members":[{"name":"JBL Authentics 300","verification":"verified","channels":["stereo"]},{"name":"Aura Studio 5","verification":"verified","channels":["mono"]}],"managed_state":"linked","backend_health":null,"unresolved_action":false,"consecutive_failures":0,"revision":9,"last_action":{"action":"start","outcome":"accepted_unconfirmed","evidence":"broadcast_acknowledgement_only","failure":null,"revision":9,"age_ms":3}}"#;
+        let honest_unconfirmed: LocalStatus = serde_json::from_slice(honest_unconfirmed).unwrap();
+        assert!(valid_status_projection(&honest_unconfirmed));
+
+        let dishonest_ack_as_accepted = br#"{"backend":"native_pair","pair_configuration":"ready","members":[{"name":"JBL Authentics 300","verification":"verified","channels":["stereo"]},{"name":"Aura Studio 5","verification":"verified","channels":["mono"]}],"managed_state":"linked","backend_health":null,"unresolved_action":false,"consecutive_failures":0,"revision":9,"last_action":{"action":"start","outcome":"accepted","evidence":"broadcast_acknowledgement_only","failure":null,"revision":9,"age_ms":3}}"#;
+        let dishonest_ack_as_accepted: LocalStatus =
+            serde_json::from_slice(dishonest_ack_as_accepted).unwrap();
+        assert!(!valid_status_projection(&dishonest_ack_as_accepted));
+    }
+
+    #[test]
+    fn action_projection_enforces_closed_outcome_evidence_failure_and_state() {
+        let honest = LocalActionResult {
+            action: LocalActionName::Start,
+            outcome: LocalActionOutcome::AcceptedUnconfirmed,
+            managed_state: LocalManagedState::Linked,
+            evidence: Some(LocalActionEvidence::BroadcastAcknowledgementOnly),
+            failure: None,
+            revision: 2,
+        };
+        assert!(valid_action_projection(&honest));
+
+        let dishonest_evidence = LocalActionResult {
+            outcome: LocalActionOutcome::Accepted,
+            ..honest
+        };
+        assert!(!valid_action_projection(&dishonest_evidence));
+
+        let dishonest_state = LocalActionResult {
+            managed_state: LocalManagedState::Ready,
+            ..honest
+        };
+        assert!(!valid_action_projection(&dishonest_state));
+
+        let honest_unknown = LocalActionResult {
+            action: LocalActionName::Stop,
+            outcome: LocalActionOutcome::OutcomeUnknown,
+            managed_state: LocalManagedState::Unknown,
+            evidence: None,
+            failure: Some(LocalFailure::JblExitOutcomeUnknown),
+            revision: 4,
+        };
+        assert!(valid_action_projection(&honest_unknown));
+
+        let dishonest_unknown_without_failure = LocalActionResult {
+            failure: None,
+            ..honest_unknown
+        };
+        assert!(!valid_action_projection(&dishonest_unknown_without_failure));
     }
 
     #[test]

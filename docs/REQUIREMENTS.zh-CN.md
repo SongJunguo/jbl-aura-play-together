@@ -114,7 +114,8 @@ HTML、CSS 和少量 JavaScript 已作为静态资源编译进 Rust 程序，因
 - JBL LAN 是否可达；
 - 琉璃控制通道状态；
 - 设备报告的预期双成员配置是否存在；
-- 当前实时状态证据是本程序本轮已关联、已解除，还是外部状态未知；
+- 本地 managed transaction state 是 linked、ready、offline 还是 unknown；它不是设备
+  角色查询，也不能单独授权 native 幂等；
 - 两个脱敏成员与 allowlisted 声道；
 - 当前管理状态：离线、就绪、关联、退化、恢复中；
 - 最近一次动作、`last_action`/`age_ms`、结果和安全错误摘要；
@@ -155,8 +156,10 @@ CSP、Host/Origin 与 CSRF 防护必须保持启用；最终冻结页面已验�
 
 ### FR-004：Play Together 启动
 
-- 已有双成员配置只能采用为成员身份前置条件；除非当前单写者会话有本轮可信 live
-  证据，否则不能仅凭该配置跳过 START；
+- 已有双成员配置只能采用为成员身份前置条件，不能据此跳过 START；
+- `NativePair` START 一律执行 backend transaction，即使 managed `linked`、health
+  healthy/lifecycle linked、成员 verified 且 Aura route 已解析；仅 legacy held session
+  可保留同 session 幂等；
 - 启动前确认目标设备身份和当前状态；
 - JBL 与 Aura 命令按照已验证顺序串行执行；
 - 写入后重新读取成员配置，确认没有指向错误设备；
@@ -172,6 +175,8 @@ CSP、Host/Origin 与 CSRF 防护必须保持启用；最终冻结页面已验�
 - 默认按接收端优先的安全顺序解除；
 - 正常 `stop` 尽量保留以后无需按键即可再次 `start` 的控制会话；
 - 无持久会话或结果未知时，不得假装解除成功；
+- `NativePair` STOP 一律执行 backend transaction；managed `ready`/healthy 不能返回
+  false-idempotent。重复 shutdown 在 managed offline 时仍可作为本地 no-op；
 - `shutdown` 与 `stop` 语义分离。
 - 不等待双成员配置消失作为 STOP 后置条件；实机已经证明该配置会在成功 STOP 后保留。
 
@@ -289,6 +294,21 @@ verified/healthy、Aura route `fresh_le`；STOP `15.89` 秒
 accepted_unconfirmed/ready，最终 journal clean、`NRestarts=0`。手机 App 未参与本轮，
 但无 ADB 手机状态证据。整体 no-button cold path 已实机通过；A2DP
 `wake_then_stable` 子路径本轮未命中/证明。
+
+native false-idempotent 实机反例中，managed linked、health/lifecycle healthy/linked、
+Aura transport `le`、route `fresh_le` 仍错误跳过 START 写入，只有 JBL 出声。修复后
+NativePair START/STOP 一律执行 backend。纠正序列为 STOP `46.71` 秒返回
+`accepted_unconfirmed`；首次 START `49.76` 秒写前拒绝且 journal clean；单次有界 retry
+`48.56` 秒返回 `accepted_unconfirmed`。retry
+后测试播放器 idle，所以当时两台无声不构成组网失败；恢复网络音源播放后 JBL
+`state=playing`、`volume=20`，用户确认仍只有 JBL 响、Aura 无声。本轮 ACK-only START
+声学失败；这不推翻历史两轮双响，只证明 compatibility transaction 不稳定。
+
+停止 JBL 网络音源后曾启用已有 Aura A2DP bridge：测试播放器显示 JBL idle/volume
+`20`、Aura playing/volume `20`。最初两台都响的瞬态没有持续；十几秒后用户更正为
+Aura 响、JBL 不响，疑似残余缓冲，不能记为声学通过或 `audio-sync` 结论。Aura queue 与
+bridge 已停止，最终两个 player idle、bridge exited。本轮两个方向均未持续双响，不建立
+新的实用方案。
 
 最终 neutral artifact 为 `8,284,440` bytes、`GLIBC_2.34`，动态依赖仅 `libc`/
 `libgcc`；artifact/installed/process hash 一致，具体 SHA 不进入公开正文。user systemd

@@ -45,6 +45,36 @@ These rules apply to every automated or human contribution in this repository.
   traced in the exact supported versions of JBL One and/or Harman Kardon One.
   If any required stage is still unknown, keep the feature in research status
   and close that gap first.
+- **No-guess gate:** an unknown stage must remain explicitly `unknown`. Never
+  fill it from a nearby model, command name, numeric similarity, UI wording,
+  old successful script, elapsed time, ATT acknowledgement, retained topology,
+  or an apparently healthy local bearer. If the exact behavior is uncertain,
+  resolve it from the pinned App packages, exact-device firmware, or a bounded
+  USB-connected official-App trace before changing production code.
+- Static App evidence must identify the exact UI event, ViewModel/coroutine or
+  callback, runtime device class, transport/session branch, serializer,
+  response predicate, reducer and teardown. When JADX output is incomplete or
+  malformed, inspect the original DEX with at least one independent route such
+  as Smali/baksmali, Androguard control flow, or another decompiler; do not
+  interpret a decompiler failure as an absent command.
+- Firmware evidence must identify the exact product image and handler or state
+  transition being relied upon. A command ID found only in App code does not
+  prove that this firmware exposes it, accepts it in the current state, or
+  produces its advertised business notification.
+- Dynamic escalation uses the operator's existing phone temporarily over USB
+  ADB, not a changing wireless-debug port as the primary evidence channel.
+  Reproduce the exact official UI transaction while correlating UI hierarchy,
+  logcat, Bluetooth HCI, network timing and, when necessary, an authorized
+  method-level hook before encryption. The final Ubuntu product must not depend
+  on that phone.
+- Before every next hardware write, the private evidence index and the active
+  reverse-engineering plan must show all stages closed, the public clean-room
+  fixture must pass offline, and the planned write must have one explicit
+  postcondition and rollback boundary. Missing evidence cancels the write; it
+  never authorizes a probe by trial and error.
+- After the evidence gates close, perform at most the single planned acoustic
+  acceptance run at the operator's fixed `20%` test volume. Do not spend
+  additional device cycles merely to search command order or timing.
 - Treat the authorized JBL One and Harman Kardon One applications as the
   primary behavioral references for this exact Authentics 300 plus Aura Studio
   5 interoperability work. Public GitHub projects are secondary references and
@@ -144,8 +174,21 @@ These rules apply to every automated or human contribution in this repository.
 - Do not use a source-specific player field as global playback state. On the
   tested firmware, UPnP `GetInfoEx` reflects Bluetooth playback more accurately
   than `getPlayerStatus`.
+- Record the actual source direction independently from controller state. An
+  Aura A2DP-only test is not Linux dual-output playback and needs no two-sink
+  audio-sync calibration, but it counts as relay only after sustained human
+  confirmation from both speakers; a transient second sound may be residual
+  buffering. If role state existed before the source test, report only the
+  directional/acoustic result; never promote it to proof that a pure official
+  Home-control transaction created the group.
 - Unknown firmware fields remain unknown. Parsers must tolerate extra fields
   and reject missing required structure without exposing the raw response.
+- `NativePair` START and STOP are never idempotent shortcuts. Managed
+  `linked`/`ready`, healthy lifecycle, verified membership and a resolved Aura
+  route are evidence projections, not device-role proof; every native START or
+  STOP must execute the backend transaction. Only the held-session legacy
+  backend may retain same-session idempotence. Repeated shutdown after managed
+  offline remains a local no-op.
 
 ## Hardware safety and reliability
 
@@ -182,11 +225,20 @@ These rules apply to every automated or human contribution in this repository.
   examples, logs, or release artifacts. Resolve the source address from the
   owner-only runtime configuration when rendering an operator-specific rule.
 
-## Android wireless-debugging evidence
+## Android USB and paired wireless-debugging evidence
 
-- The operator authorizes using a paired Android phone's wireless debugging,
-  ADB inspection, controlled UI automation, and packet capture when static APK
-  analysis and device APIs leave a concrete Play Together protocol gap.
+- The operator has authorized investigation through both Android wireless
+  debugging and USB debugging. This authorizes evidence work, not unrestricted
+  mutation of the phone, Apps, accounts, or speakers.
+- An already paired wireless ADB transport may be used to confirm pairing and
+  connectivity and for preliminary read-only package, cache, log, hierarchy,
+  and system-state evidence. USB ADB is the authoritative channel for a
+  reproducible official-App dynamic capture and correlation timeline.
+- Without a separate documented gate and explicit operator approval, do not
+  clear or recreate Bluetooth/ADB pairing, clear App or phone data, change
+  accounts, install a modified/patched APK, automate a firmware-update click,
+  invoke any OTA/update action, or send a write to either speaker. Availability
+  of wireless or USB ADB does not waive these prohibitions.
 - Treat phone-assisted dynamic analysis as the required escalation when static
   decompilation cannot settle actual address/transport selection, serialized
   bytes, callback order, business-response correlation, state notifications,
@@ -200,6 +252,12 @@ These rules apply to every automated or human contribution in this repository.
 - Prefer static analysis and read-only inspection first. Before any automated
   tap or App action that can change speaker state, take a sanitized topology
   snapshot and apply the same bounded-write and rollback rules as direct tests.
+- Read-only OTA metadata/cache inspection is distinct from starting an update.
+  Never call an App/device `enterOTA`, `requestDeviceOTA`, firmware-upload,
+  reboot-to-update, update-button click, or install action without a separately
+  documented gate and explicit operator approval. Download candidate images on
+  Ubuntu only after exact model, firmware family, size and hash provenance are
+  established.
 - Keep raw APKs, captures, Android backups, logs, device serials, ADB addresses,
   pairing data, account data, tokens, certificates, and private identifiers in
   the private Home Centre research area with owner-only access. They must never

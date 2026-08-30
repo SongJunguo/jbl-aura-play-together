@@ -134,3 +134,14 @@ firmware. ACK mode returns `accepted_unconfirmed` with
 `broadcast_acknowledgement_only` and CLI exit `0`; strict GENA requires action
 `33/34` for `accepted` with `broadcast_business_notification`. Managed `linked`
 does not imply either business notification or audibility.
+
+It also does not authorize native idempotence. NativePair START/STOP always
+execute the backend even when managed state, healthy lifecycle, membership and
+Aura route appear consistent. Same-session idempotence remains Legacy-only;
+offline shutdown remains a local no-op.
+
+In the corrective live retry, ACK mode returned `accepted_unconfirmed`, but
+after the network source resumed JBL reported playing at volume `20` and only
+JBL was audible.
+That round is an acoustic failure. The two earlier successful Rust rounds remain
+valid evidence; together the results show compatibility-path instability.

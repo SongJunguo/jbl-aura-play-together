@@ -217,6 +217,13 @@ Runtime confirmation policy is explicit and closed:
   for START or `34` for STOP returns `accepted` with evidence
   `broadcast_business_notification`; timeout remains a failure.
 
+Managed state and healthy transport projections do not authorize NativePair
+idempotence. A live counterexample returned START idempotent without writing
+while Aura was silent, despite managed linked, healthy/linked lifecycle,
+verified membership, Aura transport `le` and route `fresh_le`. NativePair
+START/STOP therefore always execute the backend; Legacy held-session idempotence
+and offline shutdown no-op remain.
+
 ## Deep-standby wake evidence
 
 The latest HCI trace resolves the phone-assisted wake ordering:
@@ -418,9 +425,11 @@ unresolved.
 | The installed firewall rule proves protocol success | Strict production retry still timed out | Refuted |
 | ACK mode is business-confirmed | Returns `accepted_unconfirmed` plus `broadcast_acknowledgement_only`, CLI exit `0` | Refuted by explicit semantics |
 | Managed `linked` proves `7951` or audibility | It records the last accepted controller action | Refuted |
+| Native managed linked + healthy lifecycle + `fresh_le` permits idempotent START/STOP | Idempotent START sent no write while Aura was silent | Refuted by live counterexample |
+| Corrective retry formed an audible link after playback resumed | JBL `state=playing`, `volume=20`; user heard only JBL and a silent Aura | Refuted for this ACK-only round; historical successes retained |
 | First-round normal STOP passed | `outcome_unknown`, `failure=aura_ack_timeout` | Refuted; explicit recovery succeeded within `13` seconds |
 | Post-fix round-two normal STOP returns ready | Playback idle; ordinary STOP accepted/`ready` in approximately `43` seconds | Verified once, without recovery |
-| More sound rounds are required for the agreed acoustic gate | User requested stopping after two successful rounds | Refuted; acoustic testing stopped |
+| Current compatibility transaction is stable | Two historical rounds passed, but the later ACK-only retry was JBL-only at playing/volume `20` | Refuted; historical successes retained |
 | Production no-button cold path completes in hardware | START `122.15` s via `fresh_le`; STOP `15.89` s; clean journal; `NRestarts=0` | Verified for one silent round |
 | Phone wake was caused by the later App LE read | BR/EDR A2DP reconnect, link-key auth/encryption and AVDTP Open preceded FDDF by about `2.5` seconds | Refuted |
 | Wake module is present in production artifact | Bounded cold chain and shared `150`-second deadline pass offline | Verified offline |
