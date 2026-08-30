@@ -239,10 +239,21 @@ are recorded in [Open JBL One requirements](docs/OPEN_JBL_ONE_REQUIREMENTS.zh-CN
 and [feature parity](docs/FEATURE_PARITY.zh-CN.md). A separate general-purpose
 main repository is recommended so this v0.4 evidence history remains intact.
 
-The active implementation mainline is the
-[Play Together Rust plan](docs/PLAY_TOGETHER_RUST_PLAN.zh-CN.md), not broad JBL
-feature parity. Generic controls remain deferred until this unique core passes
-its Ubuntu acceptance gate.
+The active implementation keeps Play Together as the unique P0 capability, but
+the evidence-closed Ubuntu JBL controls are now also present behind independent
+gates. Hardware-verified functions are sanitized status, volume `0..9`,
+absolute mute, dynamic `AUX/USB/BT` source selection and four
+non-custom seven-band EQ presets. Bluetooth Play/Pause remains
+evidence-required, and product-setting writes remain unavailable. The two
+current execution plans are the
+[Play Together Rust plan](docs/PLAY_TOGETHER_RUST_PLAN.zh-CN.md) and the
+[JBL One Ubuntu port plan](docs/JBL_ONE_UBUNTU_PORT_PLAN.zh-CN.md); neither may
+weaken the other's identity, privacy or outcome-unknown rules.
+
+The separate mDNS command is candidate discovery only: it returns sanitized
+cardinality and field-presence information and does not bind or select an exact
+Authentics 300. Exact control still requires the configured pinned-mTLS and
+UPnP model checks.
 
 ## Supported test fingerprint
 

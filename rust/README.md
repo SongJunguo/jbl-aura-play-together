@@ -110,10 +110,22 @@ verified/healthy two-member status, then STOP
 `NRestarts=0`. No phone App participated, but no ADB phone-state evidence was
 collected. The A2DP `wake_then_stable` subpath was not hit and remains unproven.
 
-The current totals are `258` library tests plus `8` CLI tests (`266` in the
-main harness), plus the FIFO private-file helper gate `1/1`. Audit,
+The current totals are `377` library tests plus `10` CLI tests, plus the FIFO
+private-file helper gate `1/1`. Audit,
 dependency-deny, fallback, privacy and neutral-build gates pass; compatibility
 evidence mode is complete.
+
+The same executable now also contains an independently gated JBL OneOS control
+surface for the exact Authentics 300. It uses the fixed official-App bearer
+selection evidence, strict SOAP/JSON parsers and the shared single-writer lock.
+Hardware-verified direct controls are volume `0..9`, absolute mute, dynamic
+`AUX/USB/BT` source selection and the four non-custom seven-band EQ presets.
+Bluetooth-source Play/Pause remains evidence-required: with no active Bluetooth
+media session, exact UPnP Play returned SOAP fault 501 and the App has no
+fallback. Product settings remain unavailable because the tested firmware
+returned no settings map. See
+[`JBL_ONE_UBUNTU_PORT_PLAN.zh-CN.md`](../docs/JBL_ONE_UBUNTU_PORT_PLAN.zh-CN.md)
+for the experiment ledger and safety boundaries.
 
 The tested device uses X.509 v1 certificates that the inspected pure-Rust
 verifier rejects. The Ubuntu candidate therefore uses vendored OpenSSL and an
@@ -134,6 +146,17 @@ jbl-aura-link-rust status
 jbl-aura-link-rust recover-stop --confirm
 jbl-aura-link-rust doctor
 jbl-aura-link-rust group
+jbl-aura-link-rust discover --json
+jbl-aura-link-rust media --json
+jbl-aura-link-rust inspect --json
+jbl-aura-link-rust capabilities --json
+jbl-aura-link-rust volume-set 9 --confirm --json
+jbl-aura-link-rust mute-set on --confirm --json
+jbl-aura-link-rust mute-set off --confirm --json
+jbl-aura-link-rust source-set aux --confirm --json
+jbl-aura-link-rust source-set bluetooth --confirm --json
+jbl-aura-link-rust eq-preset-set vocal --confirm --json
+jbl-aura-link-rust eq-preset-set signature --confirm --json
 ```
 
 `serve` is the only public executable path that constructs the native mutable
@@ -184,6 +207,33 @@ the subsequent identity-checked recovery was accepted and ended `ready`.
 `doctor` and `group` are separate read-only direct checks. Their output and all
 local-service JSON use closed, sanitized vocabularies; no address, token,
 credential path or raw backend error is representable.
+
+`discover`, `media`, `inspect` and `capabilities` are also read-only. Discovery
+uses the existing Avahi D-Bus service for one fixed five-second
+`_jbl-product._tcp` window and returns only candidate cardinality, address-family
+presence and fixed TXT-field presence; it does not expose or select a device.
+
+Every direct mutation requires `--confirm` and acquires the same v0.4/Rust
+operation and session locks before loading configuration or touching the
+device. Only read-only preconditions may retry, at most three times and only
+for `NetworkUnreachable`; a write, readback or bearer switch is never retried.
+Volume is hard-capped at `9`. Source changes wait once for the measured 350 ms
+publication delay and then read once; the speaker clears mute while changing
+source, so the volume cap—not mute—is the safety invariant. EQ preset writes
+reuse the device-returned seven-band ID, `fs` and `gain` arrays and cannot
+construct `CUSTOMIZE` or arbitrary filter data.
+
+Play/Pause remains an internal evidence fixture, not a production CLI command.
+The exact official UPnP path returned SOAP fault 501 without an active
+Bluetooth media session, and the official App has no alternate bearer fallback.
+
+OneOS command traffic is authenticated with pinned mTLS. The device's port
+59152 UPnP RenderingControl/AVTransport service is different: it is plain,
+unauthenticated HTTP. Pinned-mTLS identity checks before and after a UPnP
+transaction, the fixed IP literal and exact model check reduce accidental
+misdelivery, but they do not cryptographically bind, encrypt or authenticate
+the intervening UPnP write/readback. Treat the local network as part of the
+trust boundary; an on-path LAN attacker could still alter that traffic.
 
 SIGINT and SIGTERM handlers perform only one atomic store. After the listener
 returns, the service makes one bounded controller shutdown attempt. If a prior

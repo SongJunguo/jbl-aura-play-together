@@ -1,10 +1,12 @@
 //! Linux process boundary for the single-owner Rust controller service.
 
+use std::cell::Cell;
 use std::env;
 use std::ffi::{CString, OsStr};
 use std::fmt;
 use std::fs::File;
 use std::io;
+use std::marker::PhantomData;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -251,6 +253,48 @@ struct ControllerProcessLock {
     // session lock is released first and the public-operation gate last.
     _session_file: File,
     _operation_file: File,
+}
+
+/// Exclusive guard for a bounded direct JBL mutation outside the daemon.
+///
+/// It acquires the same operation and session locks as the persistent
+/// Play Together service, so a direct media write cannot race either the Rust
+/// daemon or the legacy v0.4 controller.
+/// The guard is intentionally not `Sync`, so one acquired capability cannot be
+/// shared by safe Rust across concurrent mutation threads.
+///
+/// ```compile_fail
+/// fn requires_sync<T: Sync>() {}
+/// requires_sync::<jbl_aura_link::DirectControlLock>();
+/// ```
+pub struct DirectControlLock {
+    _inner: ControllerProcessLock,
+    _not_sync: PhantomData<Cell<()>>,
+}
+
+#[cfg(test)]
+impl DirectControlLock {
+    /// Constructs a type-level mutation permit for in-process protocol
+    /// fixtures. Production callers can only obtain this type by acquiring
+    /// both real controller locks through `acquire_direct_control_lock`.
+    pub(crate) fn for_protocol_fixture() -> Self {
+        let operation_file = File::open("/dev/null").expect("fixture operation file should open");
+        let session_file = File::open("/dev/null").expect("fixture session file should open");
+        Self {
+            _inner: ControllerProcessLock {
+                _session_file: session_file,
+                _operation_file: operation_file,
+            },
+            _not_sync: PhantomData,
+        }
+    }
+}
+
+pub fn acquire_direct_control_lock() -> Result<DirectControlLock, ServiceRuntimeError> {
+    ControllerProcessLock::acquire().map(|inner| DirectControlLock {
+        _inner: inner,
+        _not_sync: PhantomData,
+    })
 }
 
 impl ControllerProcessLock {

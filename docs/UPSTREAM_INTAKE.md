@@ -7,13 +7,23 @@ projects without copying unlicensed source or redistributing credentials.
 
 | Project | Useful as | Source-code intake |
 |---|---|---|
-| [`MrBearPresident/JBL_Soundbar`](https://github.com/MrBearPresident/JBL_Soundbar) | Home Assistant entity design; OneOS HTTPS and UPnP command inventory | No copying while the repository has no license |
-| [`k1rnt/jbl-soundbar-cli`](https://github.com/k1rnt/jbl-soundbar-cli) | Native CLI organization; mDNS, OneOS and UPnP protocol reference | Reference-only until a complete redistribution license is present |
+| [`MrBearPresident/JBL_Soundbar`](https://github.com/MrBearPresident/JBL_Soundbar), inspected `7f347ca97922b6680993d4874fbadbc479449608` | Home Assistant entity design; OneOS HTTPS and UPnP command inventory | No copying while the repository has no license |
+| [`k1rnt/jbl-soundbar-cli`](https://github.com/k1rnt/jbl-soundbar-cli), inspected `7d10bdb1ebe0c5a77c9a4c14ebe4580bd3735309` | Native CLI organization; mDNS, OneOS and UPnP protocol reference | Package metadata says MIT, but the inspected tree lacks the license text; reference-only under this repository's intake gate |
 
-Both projects expose or embed reusable client credentials in their current
-form. They may be used in an authorized private interoperability environment,
-but this repository will never import those files, compile them into an
-executable, place them in CI, or redistribute them.
+The inspected `JBL_Soundbar` tree bundles credential-named PEM files.
+`jbl-soundbar-cli` references client material through compile-time includes,
+but that material was not present in the inspected local tree. This repository
+imports neither form, compiles neither into an executable, places neither in
+CI, and redistributes neither.
+
+The fixed-snapshot audit found one immediate clean-room intake candidate:
+bounded `_jbl-product._tcp.local.` discovery. The upstream implementations are
+not copied: one automatically selects an unordered first result, neither binds
+a candidate to this exact Authentics 300 through pinned mTLS plus UPnP model
+verification, and neither has hostile TXT or multi-device tests. Their TLS
+verification bypasses, raw logging, soundbar source tokens, legacy EQ models,
+toggle-only controls, and UPnP-to-HTTPS write fallback are explicit non-intake
+items.
 
 ## Features to implement independently
 
@@ -23,7 +33,7 @@ executable, place them in CI, or redistribute them.
 | Device information | Sanitized OneOS `getDeviceInfo` projection | Return model/firmware fields only; discard identifiers |
 | Pair membership | OneOS `getAuraCastGroupInfo` projection | Verify private identities; do not treat retained membership as live state |
 | Playback state | UPnP `GetInfoEx` | Prefer this for external Bluetooth playback |
-| Volume/mute | UPnP RenderingControl with strict bounds | Keep outside the association-only CLI until scope expands |
+| Volume/mute | UPnP RenderingControl with strict bounds | Volume is limited to `0..9`; absolute volume and mute require the direct-control lock and passed separate real-device readbacks |
 | Source/status | Capability-probed OneOS queries | Do not treat `getPlayerStatus` as universal playback truth |
 | EQ | Firmware-tolerant parsing of presets and seven-band data | Never force an older bass/treble response struct onto unknown JSON |
 | Buttons/commands | Named, allowlisted actions with postcondition reads | No arbitrary command/payload passthrough in the public CLI |

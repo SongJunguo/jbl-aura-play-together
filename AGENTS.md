@@ -4,14 +4,21 @@ These rules apply to every automated or human contribution in this repository.
 
 ## Project goal and platform order
 
-- Play Together is the unique P0 capability and the active development
-  mainline. Do not divert implementation time to EQ, generic playback, source,
-  button, mode, or Home Assistant parity until the P0 acceptance gate passes.
+- Play Together is the unique P0 capability and remains the release/live-test
+  mainline. The operator has additionally authorized an offline clean-room
+  port of already traced JBL One network/control behavior to Ubuntu. That port
+  may add typed protocol models, synthetic fixtures, read-only inspection and
+  disabled/research-only mutation serializers before P0 acceptance, but it
+  must consume no speaker-write budget and must not be advertised as verified
+  support. Untraced or unverified EQ, playback, source, button, mode and Home
+  Assistant writes remain gated.
 - P0 includes identity-safe discovery, start, stop, honest device-reported
   status, cold restart, bounded recovery, service lifecycle, and a minimal UI
   for those operations.
 - The broader open-source JBL One replacement remains the product vision, but
-  its generic controls are P2 work after Play Together is reliable.
+  production enablement of generic mutations remains P2 work after Play
+  Together is reliable. Offline protocol migration is a separate P1 research
+  track and may not weaken P0 state or evidence semantics.
 - First deliver a reliable, low-resource Ubuntu 22.04 controller for the exact
   JBL Authentics 300 plus Harman Kardon Aura Studio 5 pair.
 - Finish and accept the Ubuntu implementation before spending development time

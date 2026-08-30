@@ -22,8 +22,10 @@ One/OneOS 型号必须通过能力探测逐步加入，不能仅凭“同系列�
 
 Play Together 是本项目区别于两个参考项目的独有核心能力，也是当前唯一 P0 主线。
 
-在以下目标全部完成前，音量、EQ、通用播放、源切换、模式、按键和 Home Assistant 只
-保留需求与协议记录，不进入实现主线：
+在以下目标全部完成前，音量、EQ、通用播放、源切换、模式、按键和 Home Assistant 不
+进入生产写入或发布承诺。用户已授权把官方 App 已闭合的部分提前迁为 P1 离线 Rust
+协议模型、只读状态、合成 fixture 和默认未启用的 mutation serializer；它们不得操作
+音响或冒充已经验收的功能：
 
 1. 无手机 App 的正常 `start/stop/status`；
 2. 设备报告的 JBL + Aura 双成员配置与私有身份验真，并与实时状态分离；
@@ -254,6 +256,9 @@ install-service
 - 播放状态/控制、音量、静音、源、EQ、模式、按键；
 - 每项在 Authentics 300 上完成读/写/读回证据；
 - 不得反向破坏 M1/M2 的 Play Together 可靠性。
+
+M1 尚未冻结时，M3 可提前完成纯离线协议移植与只读 surface，但不得开放未经实机验收
+的写按钮、自动 fallback 或任意 raw command。
 
 ### M4：Ubuntu 稳定发布
 
