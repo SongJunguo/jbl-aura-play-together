@@ -1504,12 +1504,14 @@ fn post_write_pinned_identity_failure_keeps_volume_outcome_unknown() {
 
 fn run_mute_fixture(
     before: Option<bool>,
+    before_volume: Option<u8>,
     target: MuteTarget,
     write_returns_http: Option<bool>,
     after: Option<bool>,
 ) -> MuteWriteResult {
     let files = PrivateIdentityFiles::create();
-    let sends_mutation = before.is_some_and(|value| value != target.desired());
+    let sends_mutation = before.is_some_and(|value| value != target.desired())
+        && before_volume.is_some_and(|volume| volume <= crate::media::MAX_SAFE_DIRECT_VOLUME);
     assert_eq!(sends_mutation, write_returns_http.is_some());
     let tls_server =
         supported_device_info_tls_server_connections(if sends_mutation { 2 } else { 1 });
@@ -1532,7 +1534,7 @@ fn run_mute_fixture(
                     stream,
                     "200 OK",
                     "Content-Type: text/xml\r\n",
-                    upnp_info_body_with_mute(Some(9), before).as_bytes(),
+                    upnp_info_body_with_mute(before_volume, before).as_bytes(),
                 );
             }
             2 => {
@@ -1547,7 +1549,7 @@ fn run_mute_fixture(
                     stream,
                     "200 OK",
                     "Content-Type: text/xml\r\n",
-                    upnp_info_body_with_mute(Some(9), after).as_bytes(),
+                    upnp_info_body_with_mute(before_volume, after).as_bytes(),
                 );
             }
             _ => unreachable!(),
@@ -1570,7 +1572,7 @@ fn run_mute_fixture(
 #[test]
 fn mute_write_applies_once_and_requires_independent_readback() {
     assert!(matches!(
-        run_mute_fixture(Some(false), MuteTarget::On, Some(true), Some(true)),
+        run_mute_fixture(Some(false), Some(9), MuteTarget::On, Some(true), Some(true)),
         MuteWriteResult::Applied(ref playback) if playback.muted == Some(true)
     ));
 }
@@ -1578,7 +1580,7 @@ fn mute_write_applies_once_and_requires_independent_readback() {
 #[test]
 fn mute_already_at_target_sends_no_mutation() {
     assert!(matches!(
-        run_mute_fixture(Some(true), MuteTarget::On, None, None),
+        run_mute_fixture(Some(true), Some(9), MuteTarget::On, None, None),
         MuteWriteResult::AlreadyAtTarget(ref playback) if playback.muted == Some(true)
     ));
 }
@@ -1639,15 +1641,27 @@ fn mute_prewrite_network_failure_retries_only_before_any_mutation() {
 #[test]
 fn missing_before_mute_stops_before_mutation() {
     assert_eq!(
-        run_mute_fixture(None, MuteTarget::On, None, None),
+        run_mute_fixture(None, Some(9), MuteTarget::On, None, None),
         MuteWriteResult::RejectedBeforeSend(JblError::MediaMuteMissing)
+    );
+}
+
+#[test]
+fn mute_state_change_requires_known_safe_volume_before_mutation() {
+    assert_eq!(
+        run_mute_fixture(Some(false), None, MuteTarget::On, None, None),
+        MuteWriteResult::RejectedBeforeSend(JblError::MediaVolumeMissing)
+    );
+    assert_eq!(
+        run_mute_fixture(Some(false), Some(10), MuteTarget::On, None, None),
+        MuteWriteResult::RejectedBeforeSend(JblError::VolumeSafetyLimitExceeded)
     );
 }
 
 #[test]
 fn lost_mute_reply_is_not_retried_or_promoted_to_success() {
     assert!(matches!(
-        run_mute_fixture(Some(false), MuteTarget::On, Some(false), Some(true)),
+        run_mute_fixture(Some(false), Some(9), MuteTarget::On, Some(false), Some(true)),
         MuteWriteResult::TargetObservedAfterUnknownWrite(ref playback)
             if playback.muted == Some(true)
     ));
@@ -1656,7 +1670,7 @@ fn lost_mute_reply_is_not_retried_or_promoted_to_success() {
 #[test]
 fn successful_mute_transport_with_conflicting_readback_fails_postcondition() {
     assert!(matches!(
-        run_mute_fixture(Some(false), MuteTarget::On, Some(true), Some(false)),
+        run_mute_fixture(Some(false), Some(9), MuteTarget::On, Some(true), Some(false)),
         MuteWriteResult::PostconditionFailed(ref playback) if playback.muted == Some(false)
     ));
 }
@@ -2787,6 +2801,121 @@ fn eq_post_write_pinned_identity_failure_is_unknown() {
         ),
         EqPresetWriteResult::OutcomeUnknown(JblError::DeviceInfoMissing)
     );
+}
+
+#[test]
+fn direct_read_is_exactly_ten_reads_and_projects_no_raw_device_values() {
+    let files = PrivateIdentityFiles::create();
+    let raw_marker = "private-sentinel";
+    let mut feature: serde_json::Value =
+        serde_json::from_str(&valid_eq_feature_response()).unwrap();
+    feature["feature_support"][raw_marker] = serde_json::json!({"support":"true"});
+    let mut catalog = eq_catalog_value(raw_marker);
+    catalog["active_eq_id"] = serde_json::json!(raw_marker);
+    catalog["eq_list"][0]["eq_id"] = serde_json::json!(raw_marker);
+    catalog["eq_list"][0]["eq_payload"]["gain"][0] = serde_json::json!(987654);
+    let responses = [
+        r#"{"error_code":0,"device_info":{"firmware":"1","one_os_ver":"3"}}"#
+            .to_string(),
+        feature.to_string(),
+        catalog.to_string(),
+        r#"{"error_code":0,"eq_setting":{"eq_id":"private-current-id","eq_name":"private-current-name","eq_status":"on","eq_payload":{"fs":[1,2,3],"gain":[4,5,6],"q":[7,8,9],"type":[10,11,12]}}}"#.to_string(),
+        r#"{"error_code":0,"audiosource_info":{"active_source":"BT","support_sources":[{"source":"BT","type":1},{"source":"AUX","type":2},{"source":"PRIVATE_SOURCE","type":9}]}}"#.to_string(),
+        r#"{"error_code":0,"status":"off"}"#.to_string(),
+        r#"{"error_code":0,"audio_sync":"0"}"#.to_string(),
+        r#"{"error_code":0,"media_source":"BT","media_status":"stopped"}"#.to_string(),
+    ];
+    let commands = [
+        "getDeviceInfo",
+        "getFeatureSupport",
+        "getEQList",
+        "getEQ",
+        "getDeviceAudioSourceList",
+        "getPersonalListeningMode",
+        "getAudioSync",
+        "getMediaSourceStatus",
+    ];
+    let tls_server = spawn_tls_server_connections(8, move |index, stream, request| {
+        assert_eq!(
+            request.request_line,
+            format!("GET /httpapi.asp?command={} HTTP/1.1", commands[index])
+        );
+        write_response(
+            stream,
+            "200 OK",
+            "Content-Type: application/json\r\n",
+            responses[index].as_bytes(),
+        );
+    });
+    let model_body = upnp_model_body(SUPPORTED_JBL_MODEL);
+    let upnp_server = spawn_http_server_connections(2, move |index, stream, request| {
+        if index == 0 {
+            assert_model_request(&request);
+            write_response(
+                stream,
+                "200 OK",
+                "Content-Type: text/xml\r\n",
+                model_body.as_bytes(),
+            );
+        } else {
+            assert_info_request(&request);
+            write_response(
+                stream,
+                "200 OK",
+                "Content-Type: text/xml\r\n",
+                upnp_info_body(Some(9)).as_bytes(),
+            );
+        }
+    });
+    let client = test_client(
+        &files,
+        &identity_material().fingerprint,
+        Duration::from_secs(1),
+        tls_server.port,
+        upnp_server.port,
+    );
+    let observed = client
+        .direct_read(SUPPORTED_JBL_MODEL)
+        .expect("direct read fixture should pass");
+    tls_server.finish_and_assert_no_extra_connection();
+    upnp_server.finish_and_assert_no_extra_connection();
+
+    assert_eq!(observed.media.source, MediaSource::Bluetooth);
+    assert_eq!(observed.media.playback.volume, Some(9));
+    assert_eq!(observed.inspection.eq.preset_count, 5);
+    assert_eq!(observed.inspection.feature_support.unknown_key_count, 1);
+    assert_eq!(
+        observed.source_targets,
+        vec![AudioSourceTarget::Bluetooth, AudioSourceTarget::AuxIn]
+    );
+    assert_eq!(observed.active_eq, Some(EqPresetTarget::Signature));
+
+    let safe_debug = format!(
+        "{:?}",
+        (
+            &observed.media,
+            &observed.inspection,
+            &observed.source_targets,
+            observed.active_eq
+        )
+    );
+    let safe_json = serde_json::json!({
+        "media": observed.media,
+        "inspection": observed.inspection,
+        "source_targets": observed.source_targets,
+        "active_eq": observed.active_eq,
+    })
+    .to_string();
+    for marker in [
+        raw_marker,
+        "private-current-id",
+        "private-current-name",
+        "PRIVATE_SOURCE",
+        "987654",
+    ] {
+        assert!(!safe_debug.contains(marker));
+        assert!(!safe_json.contains(marker));
+    }
 }
 
 #[test]

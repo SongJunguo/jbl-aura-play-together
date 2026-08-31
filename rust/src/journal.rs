@@ -29,6 +29,7 @@ pub(crate) enum JournalAction {
     Stop,
     Shutdown,
     RecoverStop,
+    DirectControl,
 }
 
 impl JournalAction {
@@ -38,6 +39,7 @@ impl JournalAction {
             Self::Stop => "stop",
             Self::Shutdown => "shutdown",
             Self::RecoverStop => "recover-stop",
+            Self::DirectControl => "direct-control",
         }
     }
 
@@ -47,6 +49,7 @@ impl JournalAction {
             "stop" => Some(Self::Stop),
             "shutdown" => Some(Self::Shutdown),
             "recover-stop" => Some(Self::RecoverStop),
+            "direct-control" => Some(Self::DirectControl),
             _ => None,
         }
     }
@@ -644,6 +647,7 @@ mod tests {
             JournalAction::Stop,
             JournalAction::Shutdown,
             JournalAction::RecoverStop,
+            JournalAction::DirectControl,
         ] {
             let payload = encode_state(JournalState::Pending(action));
             assert!(payload.len() <= MAX_JOURNAL_BYTES as usize);

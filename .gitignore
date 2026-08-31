@@ -12,6 +12,7 @@ captures/
 audit/
 .audit/
 private-research/
+reference_project/
 
 *.pem
 *.key

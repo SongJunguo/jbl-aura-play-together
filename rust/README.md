@@ -110,7 +110,7 @@ verified/healthy two-member status, then STOP
 `NRestarts=0`. No phone App participated, but no ADB phone-state evidence was
 collected. The A2DP `wake_then_stable` subpath was not hit and remains unproven.
 
-The current totals are `377` library tests plus `10` CLI tests, plus the FIFO
+The current totals are `393` library tests plus `10` CLI tests, plus the FIFO
 private-file helper gate `1/1`. Audit,
 dependency-deny, fallback, privacy and neutral-build gates pass; compatibility
 evidence mode is complete.
@@ -169,6 +169,42 @@ loopback listener at `127.0.0.1:8096`. This is the Rust
 daily-control port; Music Assistant remains on its separate `8095` port.
 Service startup does not start Play Together, discover Aura, or send a role
 command.
+
+The same page now contains a JBL local-control card. `GET /api/jbl/status`
+combines sanitized media, inspection, capabilities, dynamic source targets and
+the recognized active EQ. Four exact-confirm POST routes expose only the
+hardware-verified volume, mute, source and non-custom EQ operations. They share
+the service actor's one `DirectControlLock` and revision with Play Together;
+the daemon never reacquires or bypasses its own lock. Play/Pause, product
+settings and raw command/payload routes do not exist. Unknown or unavailable
+state disables the corresponding controls.
+
+The Web snapshot has one fixed ten-request plan: one pinned identity read, one
+model check, one UPnP playback read and seven OneOS inspection reads. Its
+dedicated client clamps each request to 500 ms, so an unavailable or malformed
+device cannot hold the single actor for the former many-minute worst case. A
+successful snapshot is reused for at most two seconds. If the first read-only
+plan reports only device unavailability or rejection, the service waits 100 ms
+and repeats that complete plan once; it never retries a mutation. Thus a normal
+cold refresh is bounded at about five seconds and that single recovery path at
+about 10.1 seconds. This display snapshot is a best-effort, non-atomic view and
+may be up to two seconds old. Every mutation independently re-reads its exact
+identity, model, current state and safety preconditions instead of trusting the
+display cache.
+
+Every Web direct action durably marks the shared uncertainty journal before
+device I/O. A weak or unknown result keeps that marker, disables subsequent JBL
+snapshot/control and also blocks ordinary Pair mutations. Successful explicit
+`recover-stop` clears the shared marker; known direct outcomes clear it
+normally. Restarting the service cannot silently forget an uncertain direct
+write.
+
+While `jbl-aura-link-rust.service` is active it owns the shared operation and
+session locks for its whole lifetime. Direct mutation CLI commands therefore
+fail with `AlreadyRunning` by design; use the authenticated Web page for daily
+volume/mute/source/EQ changes. Read-only CLI commands remain available. Stop
+the service only as an explicit maintenance action, since graceful service
+shutdown may normalize Play Together state before releasing its transports.
 
 `start`, `stop`, `status` and `recover-stop` never load device configuration or
 construct a backend. They use a direct TCP connection fixed to IPv4 loopback,

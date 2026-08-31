@@ -153,8 +153,8 @@ Wi-Fi online + feature_support.websocket_connect.support
 
 ### P9：CLI、Web 与发布门槛
 
-- CLI：`media`、`capabilities`、后续 `volume/mute/source/eq`；
-- Web 先增加只读卡片，写按钮逐项随实机验收启用；
+- CLI：`media/inspect/capabilities/discover` 与已验证的 `volume/mute/source/eq`；
+- Web 已增加合并 JBL 状态卡和 volume/mute/source/四个非自定义 EQ 控件；
 - CLI/Web 共用单 actor 和 revision；
 - 全量 fmt、Clippy、all-target tests、Python/Bash fallback、privacy、Git history、
   neutral release scan；
@@ -203,6 +203,24 @@ Wi-Fi online + feature_support.websocket_connect.support
   `error_code`，没有返回设置 map；当前固件不能按 App 静态 DTO 假定可读，保持
   evidence-required，不开放写入；
 - 音源与四个非自定义 EQ 预设已经开放；播放与产品设置写入仍关闭。
+- P9 内置 8096 Web 已接入同一个 service actor 与 revision：一个合并只读状态接口、
+  四个 exact-confirm POST、Origin/CSRF/强 If-Match。Play/Product/raw route 均不存在；
+  unavailable/unknown 会禁用旧按钮。四条当前目标均经 Web 返回 `already_at_target`，
+  revision 0→4 且 Pair last_action 保持空；随后 Web 音量 8→9 均 `applied` 并读回；
+- `jbl-aura-link-rust.service` 与带 Basic Auth 的 LAN gateway 已启用/运行。未认证 LAN
+  请求返回 401；服务启动不执行 Play Together 或 JBL 写入。
+- 服务运行时长期持有唯一锁，direct mutation CLI 会按设计返回 `AlreadyRunning`；日常
+  volume/mute/source/EQ 应走 Web。只读 CLI 不受影响；停止服务属于显式维护动作，因为
+  graceful shutdown 可能先规范化 Play Together 状态再释放 transport。
+- Web snapshot 合并为固定 10 次读取（一次 pin、一次 model、一次 UPnP、七次 OneOS），
+  Web 专用单请求超时钳制为 500 ms；成功快照最多缓存 2 秒。首次只读计划仅在设备不可用
+  或拒绝时等待 100 ms 后完整重试一次，任何写入均不重试。因此普通冷刷新最多约 5 秒，
+  唯一恢复路径最多约 10.1 秒，不再可能占住 actor 数分钟。该展示快照是非原子的
+  best-effort 视图，最多可能旧 2 秒；每次写入仍独立重读 exact identity/model/current
+  state 和安全前置条件，不信任展示缓存；
+- 每个 Web direct 写在设备 I/O 前持久写入共享 uncertainty journal。weak/unknown 会保留
+  marker、禁用 JBL snapshot/后续 direct 写并同时阻断普通 Pair 写；服务重启也不会遗忘。
+  已知结果正常清 marker，显式 `recover-stop` 成功后才可解除未决状态。
 
 ## 6. 完成定义
 

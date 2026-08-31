@@ -231,6 +231,12 @@ separate from Music Assistant on `8095`. See the
 [sanitized checkpoint evidence](docs/RUST_LAN_EVIDENCE_2026-08-30.md), plus the
 [official-App/Rust contrast](docs/OFFICIAL_APP_RUNTIME_EVIDENCE_2026-08-30.md).
 
+The 8096 page now combines the existing Play Together card with sanitized JBL
+media/inspection status and the four hardware-verified controls: volume 0–9,
+absolute mute, dynamic AUX/USB/Bluetooth source and four non-custom EQ presets.
+All writes share one actor lock, CSRF check and strong revision. Play/Pause,
+product settings and arbitrary commands are intentionally absent.
+
 The longer-term product goal has expanded beyond association-only tooling: a
 local, open-source JBL One replacement that covers the useful capabilities of
 the two closest public projects while retaining this repository's unique Play

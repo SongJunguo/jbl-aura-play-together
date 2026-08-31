@@ -19,13 +19,12 @@ use crate::inspection::{
 use crate::media::{
     get_info_ex_request, parse_audio_source_targets, parse_get_info_ex, parse_media_source,
     parse_upnp_action_fault, set_mute_request, set_volume_request, source_mutation_body,
-    AudioSourceTarget, AudioSourceWriteResult, MediaStatus, MuteTarget, MuteWriteResult,
-    PlaybackStatus, UpnpRequest, VolumeWriteResult,
+    AudioSourceTarget, AudioSourceWriteResult, MediaSource, MediaStatus, MuteTarget,
+    MuteWriteResult, PlaybackStatus, UpnpRequest, VolumeWriteResult,
 };
 #[cfg(test)]
 use crate::media::{
-    playback_mutation_request, MediaSource, PlaybackTarget, PlaybackWriteResult, TransportState,
-    TransportStatus,
+    playback_mutation_request, PlaybackTarget, PlaybackWriteResult, TransportState, TransportStatus,
 };
 use crate::model::{
     parse_device_info, parse_group_status, DeviceIdentity, GroupStatus, SanitizedStatus,
@@ -114,6 +113,13 @@ pub struct JblLanClient {
     upnp_write_agent: ureq::Agent,
     tls_connector: Arc<PinnedOpenSslConnector>,
     timeout: Duration,
+}
+
+pub(crate) struct JblDirectRead {
+    pub(crate) media: MediaStatus,
+    pub(crate) inspection: InspectionSnapshot,
+    pub(crate) source_targets: Vec<AudioSourceTarget>,
+    pub(crate) active_eq: Option<EqPresetTarget>,
 }
 
 impl JblLanClient {
@@ -669,6 +675,66 @@ impl JblLanClient {
         .map_err(InspectionReadError::from)
     }
 
+    /// One fixed read plan for the Web card: one pinned identity check, one
+    /// exact-model check, one UPnP playback read and the seven inspection
+    /// payloads. It deliberately reuses the already-fetched feature, EQ and
+    /// source-list payloads instead of repeating identity and network reads.
+    pub(crate) fn direct_read(
+        &self,
+        expected_model: &str,
+    ) -> Result<JblDirectRead, InspectionReadError> {
+        self.verify_pinned_device_info()?;
+        self.verified_model(expected_model)?;
+        let playback = self.playback_status_upnp()?;
+
+        let feature_support = self.get_inspection_payload(OneOsReadCommand::FeatureSupport)?;
+        let eq_list = self.get_inspection_payload(OneOsReadCommand::EqList)?;
+        let eq = self.get_inspection_payload(OneOsReadCommand::Eq)?;
+        let audio_sources = self.get_inspection_payload(OneOsReadCommand::DeviceAudioSourceList)?;
+        let personal_listening =
+            self.get_inspection_payload(OneOsReadCommand::PersonalListeningMode)?;
+        let audio_sync = self.get_inspection_payload(OneOsReadCommand::AudioSync)?;
+        let media_source_activity =
+            self.get_inspection_payload(OneOsReadCommand::MediaSourceStatus)?;
+
+        let inspection = parse_inspection_snapshot(InspectionPayloads {
+            feature_support: &feature_support,
+            eq_list: &eq_list,
+            eq: &eq,
+            audio_sources: &audio_sources,
+            personal_listening: &personal_listening,
+            audio_sync: &audio_sync,
+            media_source_activity: &media_source_activity,
+        })?;
+        let feature_value: Value =
+            serde_json::from_slice(&feature_support).map_err(|_| JblError::InvalidJson)?;
+        parse_eq_feature(&feature_value)?;
+        let eq_list_value: Value =
+            serde_json::from_slice(&eq_list).map_err(|_| JblError::InvalidJson)?;
+        let active_eq = parse_eq_catalog(&eq_list_value)?.active();
+        let source_targets = inspection
+            .audio_sources
+            .support_sources
+            .iter()
+            .filter_map(|source| match source {
+                MediaSource::Bluetooth => Some(AudioSourceTarget::Bluetooth),
+                MediaSource::AuxIn => Some(AudioSourceTarget::AuxIn),
+                MediaSource::UsbPlayback => Some(AudioSourceTarget::UsbPlayback),
+                _ => None,
+            })
+            .collect();
+        let media = MediaStatus {
+            playback,
+            source: inspection.media_source_activity.source,
+        };
+        Ok(JblDirectRead {
+            media,
+            inspection,
+            source_targets,
+            active_eq,
+        })
+    }
+
     /// Sends one typed UPnP volume mutation and performs an independent
     /// readback. The method never retries and never switches transport.
     #[cfg(target_os = "linux")]
@@ -756,6 +822,16 @@ impl JblLanClient {
         let desired = target.desired();
         if before_muted == desired {
             return MuteWriteResult::AlreadyAtTarget(before);
+        }
+        if before
+            .volume
+            .is_none_or(|volume| volume > crate::media::MAX_SAFE_DIRECT_VOLUME)
+        {
+            return MuteWriteResult::RejectedBeforeSend(
+                before.volume.map_or(JblError::MediaVolumeMissing, |_| {
+                    JblError::VolumeSafetyLimitExceeded
+                }),
+            );
         }
 
         let request = set_mute_request(target);

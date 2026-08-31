@@ -8,17 +8,24 @@
 use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 use crate::backend::{
     AuraAcquisitionRoute, AuraControlTransport, PairBackendEvidence, PairBackendKind, PairHealth,
     PairHealthLevel, PairLifecycle,
 };
+use crate::capability::{Capability, CapabilityMaturity};
 use crate::controller::{
     ControllerAction, ControllerActionOutcome, ControllerActionResult, ControllerFailure,
     ControllerStatus, LastActionStatus, ManagedLiveState, PairConfigurationState,
     PairMemberChannel, PairMemberName, PairMemberStatus, PairMemberVerification,
+};
+use crate::eq::EqPresetTarget;
+use crate::inspection::InspectionSnapshot;
+use crate::media::{AudioSourceTarget, MediaStatus, MuteTarget};
+use crate::web_device::{
+    DirectActionOutcome, DirectActionResult, DirectFailure, DirectMutation, DirectSnapshot,
 };
 
 pub const DEFAULT_WEB_PORT: u16 = 8096;
@@ -36,6 +43,14 @@ pub enum WebMutation {
     Stop,
     /// Advanced local recovery.  It is intentionally absent from the HTML UI.
     RecoverStop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JblWebAction {
+    Volume,
+    Mute,
+    Source,
+    EqPreset,
 }
 
 /// Returned by the actor when its revision changed before the mutation could
@@ -57,6 +72,23 @@ pub trait WebActor {
         expected_revision: u64,
         mutation: WebMutation,
     ) -> Result<ControllerActionResult, RevisionConflict>;
+
+    fn direct_snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure> {
+        Err(DirectFailure::Unavailable)
+    }
+
+    fn mutate_direct_if_revision(
+        &mut self,
+        expected_revision: u64,
+        _mutation: DirectMutation,
+    ) -> Result<DirectActionResult, RevisionConflict> {
+        Ok(DirectActionResult {
+            outcome: DirectActionOutcome::RejectedBeforeSend,
+            observation: None,
+            failure: Some(DirectFailure::Unavailable),
+            revision: expected_revision,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,6 +238,10 @@ impl<A: WebActor> WebApp<A> {
                 let status = self.actor.status();
                 status_response(status)
             }
+            (Method::Get, "/api/jbl/status") => match self.actor.direct_snapshot() {
+                Ok(snapshot) => jbl_status_response(snapshot),
+                Err(_) => jbl_unavailable_response(),
+            },
             (Method::Get, "/healthz") => readiness_response(),
             (Method::Post, "/api/start") => {
                 self.mutation_response(&request, WebMutation::Start, MutationBody::EmptyObject)
@@ -218,6 +254,18 @@ impl<A: WebActor> WebApp<A> {
                 WebMutation::RecoverStop,
                 MutationBody::RecoverStopConfirmation,
             ),
+            (Method::Post, "/api/jbl/volume") => {
+                self.jbl_mutation_response(&request, JblMutationBody::Volume)
+            }
+            (Method::Post, "/api/jbl/mute") => {
+                self.jbl_mutation_response(&request, JblMutationBody::Mute)
+            }
+            (Method::Post, "/api/jbl/source") => {
+                self.jbl_mutation_response(&request, JblMutationBody::Source)
+            }
+            (Method::Post, "/api/jbl/eq-preset") => {
+                self.jbl_mutation_response(&request, JblMutationBody::EqPreset)
+            }
             (Method::Get | Method::Post, _) => error_response(RequestError::NotFound),
             (Method::Other, _) => error_response(RequestError::MethodNotAllowed),
         }
@@ -248,35 +296,66 @@ impl<A: WebActor> WebApp<A> {
         mutation: WebMutation,
         body_rule: MutationBody,
     ) -> HttpResponse {
-        if request.single_header("origin").is_none() {
-            return error_response(RequestError::ForbiddenOrigin);
-        }
-        if request.single_header("content-type") != Some("application/json") {
-            return error_response(RequestError::UnsupportedMediaType);
-        }
-        let Some(content_length) = request.content_length else {
-            return error_response(RequestError::LengthRequired);
-        };
-        if content_length > MAX_BODY_BYTES {
-            return error_response(RequestError::PayloadTooLarge);
-        }
-        if !body_rule.matches(&request.body) {
-            return error_response(RequestError::InvalidJsonBody);
-        }
-        if !self.valid_csrf(request) {
-            return error_response(RequestError::CsrfRejected);
-        }
-        let Some(expected_revision) = request
-            .single_header("if-match")
-            .and_then(parse_strong_revision)
-        else {
-            return error_response(RequestError::PreconditionRequired);
-        };
+        let expected_revision =
+            match self.validated_mutation_revision(request, body_rule.matches(&request.body)) {
+                Ok(revision) => revision,
+                Err(error) => return error_response(error),
+            };
 
         match self.actor.mutate_if_revision(expected_revision, mutation) {
             Ok(result) => action_response(result),
             Err(RevisionConflict) => error_response(RequestError::RevisionConflict),
         }
+    }
+
+    fn jbl_mutation_response(
+        &mut self,
+        request: &ParsedRequest,
+        body_rule: JblMutationBody,
+    ) -> HttpResponse {
+        let Some(mutation) = body_rule.parse(&request.body) else {
+            return error_response(RequestError::InvalidJsonBody);
+        };
+        let expected_revision = match self.validated_mutation_revision(request, true) {
+            Ok(revision) => revision,
+            Err(error) => return error_response(error),
+        };
+        match self
+            .actor
+            .mutate_direct_if_revision(expected_revision, mutation)
+        {
+            Ok(result) => jbl_action_response(body_rule.action(), result),
+            Err(RevisionConflict) => error_response(RequestError::RevisionConflict),
+        }
+    }
+
+    fn validated_mutation_revision(
+        &self,
+        request: &ParsedRequest,
+        body_valid: bool,
+    ) -> Result<u64, RequestError> {
+        if request.single_header("origin").is_none() {
+            return Err(RequestError::ForbiddenOrigin);
+        }
+        if request.single_header("content-type") != Some("application/json") {
+            return Err(RequestError::UnsupportedMediaType);
+        }
+        let Some(content_length) = request.content_length else {
+            return Err(RequestError::LengthRequired);
+        };
+        if content_length > MAX_BODY_BYTES {
+            return Err(RequestError::PayloadTooLarge);
+        }
+        if !body_valid {
+            return Err(RequestError::InvalidJsonBody);
+        }
+        if !self.valid_csrf(request) {
+            return Err(RequestError::CsrfRejected);
+        }
+        request
+            .single_header("if-match")
+            .and_then(parse_strong_revision)
+            .ok_or(RequestError::PreconditionRequired)
     }
 
     fn valid_csrf(&self, request: &ParsedRequest) -> bool {
@@ -300,6 +379,92 @@ impl<A: WebActor> WebApp<A> {
 enum MutationBody {
     EmptyObject,
     RecoverStopConfirmation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JblMutationBody {
+    Volume,
+    Mute,
+    Source,
+    EqPreset,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JblVolumeRequest {
+    value: u8,
+    confirm: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JblMuteRequest {
+    state: String,
+    confirm: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JblTargetRequest {
+    target: String,
+    confirm: String,
+}
+
+impl JblMutationBody {
+    fn parse(self, body: &[u8]) -> Option<DirectMutation> {
+        match self {
+            Self::Volume => {
+                let request = serde_json::from_slice::<JblVolumeRequest>(body).ok()?;
+                (request.confirm == "volume-set" && request.value <= 9)
+                    .then_some(DirectMutation::Volume(request.value))
+            }
+            Self::Mute => {
+                let request = serde_json::from_slice::<JblMuteRequest>(body).ok()?;
+                if request.confirm != "mute-set" {
+                    return None;
+                }
+                match request.state.as_str() {
+                    "on" => Some(DirectMutation::Mute(MuteTarget::On)),
+                    "off" => Some(DirectMutation::Mute(MuteTarget::Off)),
+                    _ => None,
+                }
+            }
+            Self::Source => {
+                let request = serde_json::from_slice::<JblTargetRequest>(body).ok()?;
+                if request.confirm != "source-set" {
+                    return None;
+                }
+                match request.target.as_str() {
+                    "bluetooth" => Some(DirectMutation::Source(AudioSourceTarget::Bluetooth)),
+                    "aux" => Some(DirectMutation::Source(AudioSourceTarget::AuxIn)),
+                    "usb" => Some(DirectMutation::Source(AudioSourceTarget::UsbPlayback)),
+                    _ => None,
+                }
+            }
+            Self::EqPreset => {
+                let request = serde_json::from_slice::<JblTargetRequest>(body).ok()?;
+                if request.confirm != "eq-preset-set" {
+                    return None;
+                }
+                match request.target.as_str() {
+                    "signature" => Some(DirectMutation::EqPreset(EqPresetTarget::Signature)),
+                    "vocal" => Some(DirectMutation::EqPreset(EqPresetTarget::Vocal)),
+                    "energetic" => Some(DirectMutation::EqPreset(EqPresetTarget::Energetic)),
+                    "chill" => Some(DirectMutation::EqPreset(EqPresetTarget::Chill)),
+                    _ => None,
+                }
+            }
+        }
+    }
+
+    const fn action(self) -> JblWebAction {
+        match self {
+            Self::Volume => JblWebAction::Volume,
+            Self::Mute => JblWebAction::Mute,
+            Self::Source => JblWebAction::Source,
+            Self::EqPreset => JblWebAction::EqPreset,
+        }
+    }
 }
 
 impl MutationBody {
@@ -740,8 +905,174 @@ struct ReadinessBody {
     status: &'static str,
 }
 
+#[derive(Serialize)]
+struct JblStatusBody<'a> {
+    schema_version: u8,
+    revision: u64,
+    availability: &'static str,
+    media: Option<&'a MediaStatus>,
+    inspection: Option<&'a InspectionSnapshot>,
+    capabilities: Vec<JblCapabilityBody>,
+    controls: JblControlsBody,
+}
+
+#[derive(Serialize)]
+struct JblCapabilityBody {
+    id: &'static str,
+    maturity: &'static str,
+}
+
+#[derive(Serialize)]
+struct JblControlsBody {
+    volume: JblBoundedControlBody,
+    mute: JblSimpleControlBody,
+    sources: JblTargetControlBody,
+    eq: JblEqControlBody,
+}
+
+#[derive(Serialize)]
+struct JblBoundedControlBody {
+    enabled: bool,
+    min: u8,
+    max: u8,
+}
+
+#[derive(Serialize)]
+struct JblSimpleControlBody {
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct JblTargetControlBody {
+    enabled: bool,
+    targets: Vec<&'static str>,
+}
+
+#[derive(Serialize)]
+struct JblEqControlBody {
+    enabled: bool,
+    targets: Vec<&'static str>,
+    active: Option<&'static str>,
+}
+
+#[derive(Serialize)]
+struct JblActionBody {
+    action: &'static str,
+    outcome: &'static str,
+    failure: Option<&'static str>,
+    revision: u64,
+}
+
 fn readiness_response() -> HttpResponse {
     json_response(200, &ReadinessBody { status: "ready" }, None)
+}
+
+const JBL_WEB_CAPABILITIES: &[&str] = &[
+    "device_info",
+    "media_status",
+    "media_source",
+    "volume_read",
+    "mute_read",
+    "eq_read",
+    "personal_listening_read",
+    "audio_sync_read",
+    "source_list_read",
+    "volume_set",
+    "mute_set",
+    "source_set",
+    "eq_set",
+];
+
+fn jbl_status_response(snapshot: DirectSnapshot) -> HttpResponse {
+    let revision = snapshot.revision;
+    let known_volume = snapshot.media.playback.volume.is_some();
+    let safe_volume = snapshot
+        .media
+        .playback
+        .volume
+        .is_some_and(|volume| volume <= 9);
+    let known_mute = snapshot.media.playback.muted.is_some();
+    let capabilities = snapshot
+        .capabilities
+        .iter()
+        .filter(|capability| JBL_WEB_CAPABILITIES.contains(&capability.id))
+        .map(|capability| JblCapabilityBody {
+            id: capability.id,
+            maturity: capability_maturity_name(capability.maturity),
+        })
+        .collect();
+    let source_enabled = verified_capability(&snapshot.capabilities, "source_set");
+    let source_targets = snapshot
+        .source_targets
+        .iter()
+        .copied()
+        .map(source_target_name)
+        .collect::<Vec<_>>();
+    let eq_enabled = verified_capability(&snapshot.capabilities, "eq_set")
+        && safe_volume
+        && snapshot.active_eq.is_some();
+    let eq_targets = if eq_enabled {
+        vec!["signature", "vocal", "energetic", "chill"]
+    } else {
+        Vec::new()
+    };
+    let body = JblStatusBody {
+        schema_version: 1,
+        revision,
+        availability: "available",
+        media: Some(&snapshot.media),
+        inspection: Some(&snapshot.inspection),
+        capabilities,
+        controls: JblControlsBody {
+            volume: JblBoundedControlBody {
+                enabled: verified_capability(&snapshot.capabilities, "volume_set") && known_volume,
+                min: 0,
+                max: 9,
+            },
+            mute: JblSimpleControlBody {
+                enabled: verified_capability(&snapshot.capabilities, "mute_set")
+                    && known_mute
+                    && safe_volume,
+            },
+            sources: JblTargetControlBody {
+                enabled: source_enabled && safe_volume && !source_targets.is_empty(),
+                targets: source_targets,
+            },
+            eq: JblEqControlBody {
+                enabled: eq_enabled,
+                targets: eq_targets,
+                active: snapshot.active_eq.map(eq_target_name),
+            },
+        },
+    };
+    json_response(200, &body, Some(revision))
+}
+
+fn verified_capability(capabilities: &[Capability], id: &str) -> bool {
+    capabilities.iter().any(|capability| {
+        capability.id == id && capability.maturity == CapabilityMaturity::ImplementedVerifiedWrite
+    })
+}
+
+fn jbl_action_response(action: JblWebAction, result: DirectActionResult) -> HttpResponse {
+    let revision = result.revision;
+    let body = JblActionBody {
+        action: jbl_action_name(action),
+        outcome: jbl_outcome_name(result.outcome),
+        failure: result.failure.map(jbl_failure_name),
+        revision,
+    };
+    json_response(200, &body, Some(revision))
+}
+
+fn jbl_unavailable_response() -> HttpResponse {
+    json_response(
+        503,
+        &ErrorBody {
+            error: "jbl_unavailable",
+        },
+        None,
+    )
 }
 
 fn status_response(status: ControllerStatus) -> HttpResponse {
@@ -915,6 +1246,69 @@ fn action_name(value: ControllerAction) -> &'static str {
     }
 }
 
+fn source_target_name(value: AudioSourceTarget) -> &'static str {
+    match value {
+        AudioSourceTarget::Bluetooth => "bluetooth",
+        AudioSourceTarget::AuxIn => "aux",
+        AudioSourceTarget::UsbPlayback => "usb",
+    }
+}
+
+fn eq_target_name(value: EqPresetTarget) -> &'static str {
+    match value {
+        EqPresetTarget::Signature => "signature",
+        EqPresetTarget::Vocal => "vocal",
+        EqPresetTarget::Energetic => "energetic",
+        EqPresetTarget::Chill => "chill",
+    }
+}
+
+fn capability_maturity_name(value: CapabilityMaturity) -> &'static str {
+    match value {
+        CapabilityMaturity::ImplementedReadOnly => "implemented_read_only",
+        CapabilityMaturity::ImplementedVerifiedWrite => "implemented_verified_write",
+        CapabilityMaturity::ProtocolPortedResearchOnly => "protocol_ported_research_only",
+        CapabilityMaturity::SerializerOnly => "serializer_only",
+        CapabilityMaturity::EvidenceRequired => "evidence_required",
+        CapabilityMaturity::NotAdvertisedByExactProfile => "not_advertised_by_exact_profile",
+        CapabilityMaturity::Forbidden => "forbidden",
+    }
+}
+
+fn jbl_action_name(value: JblWebAction) -> &'static str {
+    match value {
+        JblWebAction::Volume => "volume_set",
+        JblWebAction::Mute => "mute_set",
+        JblWebAction::Source => "source_set",
+        JblWebAction::EqPreset => "eq_preset_set",
+    }
+}
+
+fn jbl_outcome_name(value: DirectActionOutcome) -> &'static str {
+    match value {
+        DirectActionOutcome::AlreadyAtTarget => "already_at_target",
+        DirectActionOutcome::Applied => "applied",
+        DirectActionOutcome::RejectedByDevice => "rejected_by_device",
+        DirectActionOutcome::TargetObservedAfterUnknownWrite => {
+            "target_observed_after_unknown_write"
+        }
+        DirectActionOutcome::PostconditionFailed => "postcondition_failed",
+        DirectActionOutcome::RejectedBeforeSend => "rejected_before_send",
+        DirectActionOutcome::OutcomeUnknown => "outcome_unknown",
+    }
+}
+
+fn jbl_failure_name(value: DirectFailure) -> &'static str {
+    match value {
+        DirectFailure::Unavailable => "unavailable",
+        DirectFailure::SafetyGate => "safety_gate",
+        DirectFailure::UnsupportedTarget => "unsupported_target",
+        DirectFailure::DeviceRejected => "device_rejected",
+        DirectFailure::InvalidState => "invalid_state",
+        DirectFailure::OutcomeUnknown => "outcome_unknown",
+    }
+}
+
 fn outcome_name(value: ControllerActionOutcome) -> &'static str {
     match value {
         ControllerActionOutcome::Accepted => "accepted",
@@ -1064,6 +1458,7 @@ fn reason_phrase(status: u16) -> &'static str {
         413 => "Payload Too Large",
         415 => "Unsupported Media Type",
         428 => "Precondition Required",
+        503 => "Service Unavailable",
         505 => "HTTP Version Not Supported",
         _ => "Error",
     }
@@ -1107,20 +1502,45 @@ const PAGE_HTML: &str = r#"<!doctype html>
 <dl><dt>本地管理状态</dt><dd id="managed">—</dd><dt>双成员配置</dt><dd id="pair">—</dd><dt>控制通道 / 本地生命周期</dt><dd id="health">—</dd><dt>Aura 获取路径</dt><dd id="route">—</dd><dt>状态版本</dt><dd id="revision">—</dd></dl>
 <h2>成员</h2><ul><li>JBL Authentics 300：<span id="jbl">—</span></li><li>Aura Studio 5：<span id="aura">—</span></li></ul>
 <h2>最近操作</h2><p id="last">本进程尚无操作</p>
-<button id="start" type="button">启动</button><button id="stop" type="button">停止</button></main>
+<button id="start" type="button">启动</button><button id="stop" type="button">停止</button>
+<section aria-labelledby="jbl-heading"><h1 id="jbl-heading">JBL Authentics 300（本地控制）</h1>
+<p role="status" aria-live="polite"><strong id="jbl-message">正在读取…</strong></p>
+<h2>媒体状态</h2><dl><dt>音源</dt><dd id="jbl-source">—</dd><dt>播放状态</dt><dd id="jbl-activity">—</dd><dt>音量</dt><dd id="jbl-volume">—</dd><dt>静音</dt><dd id="jbl-muted">—</dd></dl>
+<h2>设备检查</h2><dl><dt>EQ 预设数</dt><dd id="jbl-eq-count">—</dd><dt>EQ 当前预设</dt><dd id="jbl-eq-active">—</dd><dt>EQ 数组长度</dt><dd id="jbl-eq-shape">—</dd><dt>Personal Listening</dt><dd id="jbl-personal">—</dd><dt>Audio Sync</dt><dd id="jbl-sync">—</dd><dt>能力</dt><dd id="jbl-capabilities">—</dd></dl>
+<h2>安全控制</h2><p>切换音源可能解除静音；仅在音量≤9时执行。EQ 仅四个官方预设，不提供自定义设置。</p>
+<button id="jbl-refresh" type="button">刷新 JBL 状态</button>
+<label for="jbl-volume-input">音量 0–9</label><input id="jbl-volume-input" type="number" min="0" max="9" step="1"><button id="jbl-volume-apply" type="button" disabled>应用音量</button>
+<button id="jbl-mute-on" type="button" disabled>静音</button><button id="jbl-mute-off" type="button" disabled>取消静音</button>
+<div><strong>音源</strong><span id="jbl-source-controls"></span></div>
+<div><strong>EQ 预设</strong><button type="button" data-eq="signature" disabled>Signature</button><button type="button" data-eq="vocal" disabled>Vocal</button><button type="button" data-eq="energetic" disabled>Energetic</button><button type="button" data-eq="chill" disabled>Chill</button></div>
+</section></main>
 <script nonce="__CSP_NONCE__">
 "use strict";
 let revision = null;
+let jblMutationInFlight = false;
 const byId=id=>document.getElementById(id);
 const ackOnlyWarning="仅收到厂商控制ACK；琉璃是否出声未验证，linked/healthy不代表声学成功";
+const weakWriteWarning="写入回复丢失；读回看见目标，但结果仍未知，请勿重试";
+const browserWriteWarning="浏览器未收到完整写入结果；结果未知，请勿重试。控制保持禁用，请先刷新 JBL 状态";
 function csrf(){const item=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith("jbl_aura_csrf="));return item?item.slice("jbl_aura_csrf=".length):"";}
 function memberText(member){return member.verification+"；声道 "+member.channels.join(", ");}
 function statusMessage(data){if(data.unresolved_action){return "存在未决操作，需要命令行恢复";}const last=data.last_action;if(last&&(last.outcome==="accepted_unconfirmed"||last.evidence==="broadcast_acknowledgement_only")){return ackOnlyWarning;}if(last&&last.outcome==="idempotent"){return "本次操作未写设备。";}return "状态已更新";}
-function render(data){revision=data.revision;byId("managed").textContent=data.managed_state;byId("pair").textContent=data.pair_configuration;byId("health").textContent=data.backend_health?data.backend_health.level+" / "+data.backend_health.lifecycle:"unavailable";byId("route").textContent=data.backend_health?data.backend_health.aura_acquisition_route:"unresolved";byId("revision").textContent=String(data.revision);const members=new Map(data.members.map(member=>[member.name,member]));byId("jbl").textContent=memberText(members.get("JBL Authentics 300"));byId("aura").textContent=memberText(members.get("Aura Studio 5"));const last=data.last_action;byId("last").textContent=last?last.action+" / "+last.outcome+" / evidence="+(last.evidence??"none")+" / failure="+(last.failure??"none")+" / revision="+last.revision+" / age_ms="+last.age_ms:"本进程尚无操作";byId("message").textContent=statusMessage(data);}
-async function refresh(){const response=await fetch("/api/status",{cache:"no-store"});render(await response.json());}
+function updateRevision(value){revision=value;}
+function render(data){updateRevision(data.revision);byId("managed").textContent=data.managed_state;byId("pair").textContent=data.pair_configuration;byId("health").textContent=data.backend_health?data.backend_health.level+" / "+data.backend_health.lifecycle:"unavailable";byId("route").textContent=data.backend_health?data.backend_health.aura_acquisition_route:"unresolved";byId("revision").textContent=String(data.revision);const members=new Map(data.members.map(member=>[member.name,member]));byId("jbl").textContent=memberText(members.get("JBL Authentics 300"));byId("aura").textContent=memberText(members.get("Aura Studio 5"));const last=data.last_action;byId("last").textContent=last?last.action+" / "+last.outcome+" / evidence="+(last.evidence??"none")+" / failure="+(last.failure??"none")+" / revision="+last.revision+" / age_ms="+last.age_ms:"本进程尚无操作";byId("message").textContent=statusMessage(data);}
+function sourceLabel(value){return value==="bluetooth"?"蓝牙":value==="aux"?"AUX":value==="usb"?"USB":"未知";}
+function disableJbl(){byId("jbl-volume-apply").disabled=true;byId("jbl-mute-on").disabled=true;byId("jbl-mute-off").disabled=true;byId("jbl-source-controls").replaceChildren();for(const button of document.querySelectorAll("[data-eq]")){button.disabled=true;}}
+function renderJbl(data){updateRevision(data.revision);const available=data.availability==="available"&&data.media&&data.inspection;const interactive=available&&!jblMutationInFlight;byId("jbl-message").textContent=available?"状态已更新":"JBL 状态暂不可用，控制已禁用";byId("jbl-source").textContent=available?data.media.source:"unknown";byId("jbl-activity").textContent=available?data.media.playback.state:"unknown";byId("jbl-volume").textContent=available&&data.media.playback.volume!==null?String(data.media.playback.volume):"unknown";byId("jbl-muted").textContent=available&&data.media.playback.muted!==null?(data.media.playback.muted?"是":"否"):"unknown";byId("jbl-volume-input").value=available&&data.media.playback.volume!==null?String(data.media.playback.volume):"";byId("jbl-eq-count").textContent=available?String(data.inspection.eq.preset_count):"unknown";byId("jbl-eq-active").textContent=data.controls.eq.active??"unknown";byId("jbl-eq-shape").textContent=available?data.inspection.eq.fs_count+"/"+data.inspection.eq.gain_count+"/"+data.inspection.eq.q_count+"/"+data.inspection.eq.type_count:"unknown";byId("jbl-personal").textContent=available?data.inspection.personal_listening:"unknown";byId("jbl-sync").textContent=available?String(data.inspection.audio_sync):"unknown";byId("jbl-capabilities").textContent=data.capabilities.map(item=>item.id+":"+item.maturity).join(", ");byId("jbl-volume-apply").disabled=!interactive||!data.controls.volume.enabled;byId("jbl-mute-on").disabled=!interactive||!data.controls.mute.enabled;byId("jbl-mute-off").disabled=!interactive||!data.controls.mute.enabled;const sources=byId("jbl-source-controls");sources.replaceChildren();for(const target of data.controls.sources.targets){const button=document.createElement("button");button.type="button";button.textContent=sourceLabel(target);button.disabled=!interactive||!data.controls.sources.enabled;button.addEventListener("click",()=>mutateJbl("source",'{"target":"'+target+'","confirm":"source-set"}'));sources.append(button);}for(const button of document.querySelectorAll("[data-eq]")){button.disabled=!interactive||!data.controls.eq.enabled||!data.controls.eq.targets.includes(button.dataset.eq);}}
+function jblResultMessage(result){if(result.outcome==="applied"){return "已执行并读回确认";}if(result.outcome==="already_at_target"){return "已是目标状态，本次未写设备";}if(result.outcome==="target_observed_after_unknown_write"||result.outcome==="outcome_unknown"){return weakWriteWarning;}if(result.outcome==="rejected_by_device"){return "设备拒绝了请求";}if(result.outcome==="postcondition_failed"){return "设备读回与目标不一致";}return "请求在写入前被拒绝";}
+async function refresh(){try{const pair=await fetch("/api/status",{cache:"no-store"});if(!pair.ok){throw new Error("pair unavailable");}render(await pair.json());}catch(_error){disableJbl();byId("message").textContent="状态读取失败";byId("jbl-message").textContent="整体状态读取失败，JBL 控制已禁用";return false;}try{const jbl=await fetch("/api/jbl/status",{cache:"no-store"});if(!jbl.ok){throw new Error("jbl unavailable");}renderJbl(await jbl.json());return true;}catch(_error){disableJbl();byId("jbl-message").textContent="JBL 状态读取失败，控制已禁用";return false;}}
 async function mutate(action){if(revision===null){await refresh();}const response=await fetch("/api/"+action,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf(),"If-Match":"\""+revision+"\""},body:"{}"});if(response.status===409){await refresh();return;}await response.json();await refresh();}
+async function mutateJbl(action,body){if(jblMutationInFlight){return;}jblMutationInFlight=true;disableJbl();byId("jbl-refresh").disabled=true;try{if(revision===null&&!(await refresh())){return;}const response=await fetch("/api/jbl/"+action,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf(),"If-Match":"\""+revision+"\""},body});if(response.status===409){jblMutationInFlight=false;await refresh();return;}const result=await response.json();const message=response.ok?jblResultMessage(result):"请求失败，未自动重试";jblMutationInFlight=false;if(await refresh()){byId("jbl-message").textContent=message;}else{disableJbl();byId("jbl-message").textContent="请求已返回，但状态刷新失败；控制已禁用";}}catch(_error){jblMutationInFlight=false;disableJbl();byId("jbl-message").textContent=browserWriteWarning;}finally{jblMutationInFlight=false;byId("jbl-refresh").disabled=false;}}
 document.getElementById("start").addEventListener("click",()=>mutate("start"));
 document.getElementById("stop").addEventListener("click",()=>mutate("stop"));
+document.getElementById("jbl-volume-apply").addEventListener("click",()=>{const value=Number(byId("jbl-volume-input").value);if(Number.isInteger(value)&&value>=0&&value<=9){mutateJbl("volume",'{"value":'+value+',"confirm":"volume-set"}');}});
+document.getElementById("jbl-mute-on").addEventListener("click",()=>mutateJbl("mute",'{"state":"on","confirm":"mute-set"}'));
+document.getElementById("jbl-mute-off").addEventListener("click",()=>mutateJbl("mute",'{"state":"off","confirm":"mute-set"}'));
+for(const button of document.querySelectorAll("[data-eq]")){button.addEventListener("click",()=>mutateJbl("eq-preset",'{"target":"'+button.dataset.eq+'","confirm":"eq-preset-set"}'));}
+document.getElementById("jbl-refresh").addEventListener("click",async()=>{if(jblMutationInFlight){return;}byId("jbl-refresh").disabled=true;await refresh();byId("jbl-refresh").disabled=false;});
 refresh().catch(()=>{byId("message").textContent="状态读取失败";});
 </script>
 </body></html>"#;
@@ -1136,6 +1556,11 @@ mod tests {
         PairConfigurationObservation, PairConfigurationProbe, PairController, PairProbeError,
     };
     use crate::journal::MemoryJournal;
+    use crate::media::{MediaSource, PlaybackStatus, TransportState, TransportStatus};
+    use crate::{
+        authentics_300_capabilities, AudioSourceSummary, EqSummary, FeatureSupportSummary,
+        MediaSourceActivity, MediaSourceActivitySummary, PersonalListeningState,
+    };
 
     struct Probe;
 
@@ -1238,6 +1663,107 @@ mod tests {
         )
     }
 
+    struct DirectActor {
+        pair: Actor,
+        snapshot: DirectSnapshot,
+        direct_calls: usize,
+        direct_mutations: Vec<DirectMutation>,
+        private_marker: &'static str,
+    }
+
+    impl WebActor for DirectActor {
+        fn status(&mut self) -> ControllerStatus {
+            self.pair.status()
+        }
+
+        fn mutate_if_revision(
+            &mut self,
+            expected_revision: u64,
+            mutation: WebMutation,
+        ) -> Result<ControllerActionResult, RevisionConflict> {
+            self.pair.mutate_if_revision(expected_revision, mutation)
+        }
+
+        fn direct_snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure> {
+            Ok(self.snapshot.clone())
+        }
+
+        fn mutate_direct_if_revision(
+            &mut self,
+            expected_revision: u64,
+            mutation: DirectMutation,
+        ) -> Result<DirectActionResult, RevisionConflict> {
+            if expected_revision != self.snapshot.revision {
+                return Err(RevisionConflict);
+            }
+            self.direct_calls += 1;
+            self.direct_mutations.push(mutation);
+            self.snapshot.revision += 1;
+            Ok(DirectActionResult {
+                outcome: DirectActionOutcome::Applied,
+                observation: None,
+                failure: None,
+                revision: self.snapshot.revision,
+            })
+        }
+    }
+
+    fn direct_snapshot() -> DirectSnapshot {
+        DirectSnapshot {
+            media: MediaStatus {
+                playback: PlaybackStatus {
+                    state: TransportState::Stopped,
+                    transport_status: TransportStatus::Ok,
+                    volume: Some(9),
+                    muted: Some(false),
+                },
+                source: MediaSource::Bluetooth,
+            },
+            inspection: InspectionSnapshot {
+                feature_support: FeatureSupportSummary {
+                    known: Vec::new(),
+                    unknown_key_count: 1,
+                },
+                eq: EqSummary {
+                    preset_count: 5,
+                    active_present: true,
+                    fs_count: 3,
+                    gain_count: 3,
+                    q_count: 3,
+                    type_count: 3,
+                },
+                audio_sources: AudioSourceSummary {
+                    active: MediaSource::Bluetooth,
+                    support_sources: vec![MediaSource::Bluetooth, MediaSource::AuxIn],
+                },
+                personal_listening: PersonalListeningState::Off,
+                audio_sync: 0,
+                media_source_activity: MediaSourceActivitySummary {
+                    source: MediaSource::Bluetooth,
+                    activity: MediaSourceActivity::Stopped,
+                },
+            },
+            capabilities: authentics_300_capabilities().to_vec(),
+            source_targets: vec![AudioSourceTarget::Bluetooth, AudioSourceTarget::AuxIn],
+            active_eq: Some(EqPresetTarget::Signature),
+            revision: 0,
+        }
+    }
+
+    fn direct_app() -> WebApp<DirectActor> {
+        let pair = app().into_actor();
+        WebApp::new(
+            DirectActor {
+                pair,
+                snapshot: direct_snapshot(),
+                direct_calls: 0,
+                direct_mutations: Vec::new(),
+                private_marker: "private-ip-uuid-cert-path-marker",
+            },
+            WebSecurity::loopback([0x5a; 32]).expect("security"),
+        )
+    }
+
     fn token() -> String {
         "5a".repeat(32)
     }
@@ -1248,6 +1774,20 @@ mod tests {
 
     fn post(path: &str, revision: u64, csrf_header: &str, csrf_cookie: &str) -> Vec<u8> {
         let body = "{}";
+        format!(
+            "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:8096\r\nOrigin: http://127.0.0.1:8096\r\nContent-Type: application/json\r\nContent-Length: {}\r\nIf-Match: \"{revision}\"\r\nX-CSRF-Token: {csrf_header}\r\nCookie: {CSRF_COOKIE}={csrf_cookie}\r\n\r\n{body}",
+            body.len()
+        )
+        .into_bytes()
+    }
+
+    fn post_json(
+        path: &str,
+        revision: u64,
+        csrf_header: &str,
+        csrf_cookie: &str,
+        body: &str,
+    ) -> Vec<u8> {
         format!(
             "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:8096\r\nOrigin: http://127.0.0.1:8096\r\nContent-Type: application/json\r\nContent-Length: {}\r\nIf-Match: \"{revision}\"\r\nX-CSRF-Token: {csrf_header}\r\nCookie: {CSRF_COOKIE}={csrf_cookie}\r\n\r\n{body}",
             body.len()
@@ -1295,6 +1835,24 @@ mod tests {
         assert!(!body.contains("<dt>后端健康</dt>"));
         assert!(!body.contains("JSON.stringify"));
         assert!(!body.contains("recover-stop"));
+        assert!(body.contains("JBL Authentics 300（本地控制）"));
+        assert!(body.contains("id=\"jbl-refresh\""));
+        assert!(body.contains("jbl-volume-apply"));
+        assert!(body.contains("data-eq=\"signature\""));
+        assert!(!body.contains("/api/jbl/playback"));
+        assert!(!body.contains("product-setting"));
+        assert!(!body.contains("id=\"play\""));
+        assert!(!body.contains("innerHTML"));
+        assert!(body.contains("function disableJbl()"));
+        assert!(body.contains("catch(_error){disableJbl();"));
+        assert!(body.contains("if(jblMutationInFlight){return;}jblMutationInFlight=true"));
+        assert!(body.contains("finally{jblMutationInFlight=false;"));
+        assert!(body.contains("function updateRevision(value){revision=value;}"));
+        assert!(!body.contains("Math.max(revision"));
+        assert!(body.contains("浏览器未收到完整写入结果；结果未知，请勿重试"));
+        assert!(body.contains("控制保持禁用，请先刷新 JBL 状态"));
+        assert!(body.contains("if(await refresh()){byId(\"jbl-message\").textContent=message;}"));
+        assert!(body.contains("结果仍未知，请勿重试"));
         assert!(!body.contains("__CSP_NONCE__"));
         assert!(response
             .header("Content-Security-Policy")
@@ -1311,6 +1869,179 @@ mod tests {
             .header("Set-Cookie")
             .unwrap()
             .contains("SameSite=Strict"));
+    }
+
+    #[test]
+    fn default_actor_jbl_status_is_closed_unavailable() {
+        let mut app = app();
+        let response = app.handle(&get("/api/jbl/status", "127.0.0.1:8096"));
+        assert_eq!(response.status(), 503);
+        assert_eq!(
+            json(&response),
+            serde_json::json!({"error":"jbl_unavailable"})
+        );
+    }
+
+    #[test]
+    fn jbl_status_contains_only_sanitized_cards_and_filtered_capabilities() {
+        let mut app = direct_app();
+        let response = app.handle(&get("/api/jbl/status", "127.0.0.1:8096"));
+        assert_eq!(response.status(), 200);
+        let body = json(&response);
+        assert_eq!(body["schema_version"], 1);
+        assert_eq!(body["availability"], "available");
+        assert_eq!(body["media"]["source"], "bluetooth");
+        assert_eq!(body["inspection"]["eq"]["preset_count"], 5);
+        assert_eq!(body["controls"]["volume"]["max"], 9);
+        assert_eq!(
+            body["controls"]["sources"]["targets"],
+            serde_json::json!(["bluetooth", "aux"])
+        );
+        assert_eq!(body["controls"]["eq"]["active"], "signature");
+        let encoded = std::str::from_utf8(response.body()).unwrap();
+        let actor = app.into_actor();
+        assert!(!encoded.contains(actor.private_marker));
+        assert!(!encoded.contains("playback_mutation"));
+        assert!(!encoded.contains("product_settings_read"));
+    }
+
+    #[test]
+    fn unsafe_or_unknown_snapshot_disables_state_changing_controls() {
+        let mut app = direct_app();
+        app.actor.snapshot.media.playback.volume = Some(10);
+        app.actor.snapshot.active_eq = None;
+        let response = app.handle(&get("/api/jbl/status", "127.0.0.1:8096"));
+        let body = json(&response);
+        // Volume remains available to lower an existing loud value into the
+        // 0..9 safe range; every action that can reveal or route audio stops.
+        assert_eq!(body["controls"]["volume"]["enabled"], true);
+        assert_eq!(body["controls"]["mute"]["enabled"], false);
+        assert_eq!(body["controls"]["sources"]["enabled"], false);
+        assert_eq!(body["controls"]["eq"]["enabled"], false);
+
+        let mut app = direct_app();
+        app.actor.snapshot.media.playback.volume = None;
+        let response = app.handle(&get("/api/jbl/status", "127.0.0.1:8096"));
+        assert_eq!(json(&response)["controls"]["volume"]["enabled"], false);
+    }
+
+    #[test]
+    fn four_jbl_routes_require_exact_confirmed_bodies_and_revision() {
+        let csrf = token();
+        for (path, body, action, expected_mutation) in [
+            (
+                "/api/jbl/volume",
+                r#"{"value":9,"confirm":"volume-set"}"#,
+                "volume_set",
+                DirectMutation::Volume(9),
+            ),
+            (
+                "/api/jbl/mute",
+                r#"{"state":"on","confirm":"mute-set"}"#,
+                "mute_set",
+                DirectMutation::Mute(MuteTarget::On),
+            ),
+            (
+                "/api/jbl/source",
+                r#"{"target":"aux","confirm":"source-set"}"#,
+                "source_set",
+                DirectMutation::Source(AudioSourceTarget::AuxIn),
+            ),
+            (
+                "/api/jbl/eq-preset",
+                r#"{"target":"vocal","confirm":"eq-preset-set"}"#,
+                "eq_preset_set",
+                DirectMutation::EqPreset(EqPresetTarget::Vocal),
+            ),
+        ] {
+            let mut app = direct_app();
+            let response = app.handle(&post_json(path, 0, &csrf, &csrf, body));
+            assert_eq!(response.status(), 200);
+            assert_eq!(json(&response)["action"], action);
+            assert_eq!(json(&response)["outcome"], "applied");
+            assert_eq!(json(&response)["revision"], 1);
+            let actor = app.into_actor();
+            assert_eq!(actor.direct_calls, 1);
+            assert_eq!(actor.direct_mutations, vec![expected_mutation]);
+        }
+    }
+
+    #[test]
+    fn invalid_jbl_bodies_and_stale_revision_never_reach_actor_mutation() {
+        let csrf = token();
+        for (path, body) in [
+            ("/api/jbl/volume", r#"{"value":10,"confirm":"volume-set"}"#),
+            (
+                "/api/jbl/volume",
+                r#"{"value":9,"confirm":"volume-set","ip":"private"}"#,
+            ),
+            (
+                "/api/jbl/volume",
+                r#"{"value":9,"value":8,"confirm":"volume-set"}"#,
+            ),
+            (
+                "/api/jbl/mute",
+                r#"{"state":"on","confirm":"mute-set","confirm":"mute-set"}"#,
+            ),
+            (
+                "/api/jbl/mute",
+                r#"{"state":"toggle","confirm":"mute-set"}"#,
+            ),
+            (
+                "/api/jbl/source",
+                r#"{"target":"PRIVATE","confirm":"source-set"}"#,
+            ),
+            (
+                "/api/jbl/eq-preset",
+                r#"{"target":"custom","confirm":"eq-preset-set"}"#,
+            ),
+            (
+                "/api/jbl/source",
+                r#"{"command":"raw","confirm":"source-set"}"#,
+            ),
+        ] {
+            let mut app = direct_app();
+            let response = app.handle(&post_json(path, 0, &csrf, &csrf, body));
+            assert_eq!(response.status(), 400);
+            assert_eq!(app.into_actor().direct_calls, 0);
+        }
+        let mut app = direct_app();
+        let response = app.handle(&post_json(
+            "/api/jbl/mute",
+            4,
+            &csrf,
+            &csrf,
+            r#"{"state":"off","confirm":"mute-set"}"#,
+        ));
+        assert_eq!(response.status(), 409);
+        assert_eq!(app.into_actor().direct_calls, 0);
+    }
+
+    #[test]
+    fn direct_routes_reject_origin_csrf_and_missing_or_weak_revision_without_calls() {
+        let csrf = token();
+        let body = r#"{"state":"on","confirm":"mute-set"}"#;
+        let base = String::from_utf8(post_json("/api/jbl/mute", 0, &csrf, &csrf, body)).unwrap();
+        let cases = [
+            (
+                base.replace(
+                    "Origin: http://127.0.0.1:8096",
+                    "Origin: http://localhost:8096",
+                ),
+                403,
+            ),
+            (
+                base.replace(&format!("X-CSRF-Token: {csrf}"), "X-CSRF-Token: wrong"),
+                403,
+            ),
+            (base.replace("If-Match: \"0\"\r\n", ""), 428),
+            (base.replace("If-Match: \"0\"", "If-Match: W/\"0\""), 428),
+        ];
+        for (request, expected_status) in cases {
+            let mut app = direct_app();
+            assert_eq!(app.handle(request.as_bytes()).status(), expected_status);
+            assert_eq!(app.into_actor().direct_calls, 0);
+        }
     }
 
     #[test]

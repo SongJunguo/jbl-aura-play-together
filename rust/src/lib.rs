@@ -38,6 +38,7 @@ mod private_file;
 mod service_runtime;
 mod tls;
 pub mod web;
+pub mod web_device;
 mod web_server;
 
 pub use backend::{
@@ -84,6 +85,10 @@ pub use service_runtime::{
     acquire_direct_control_lock, build_native_service_actor, ensure_user_service,
     install_termination_handlers, validate_native_runtime, DirectControlLock, ServiceActor,
     ServiceRuntimeError,
+};
+pub use web_device::{
+    DirectActionOutcome, DirectActionResult, DirectFailure, DirectMutation, DirectObservation,
+    DirectSnapshot,
 };
 #[cfg(target_os = "linux")]
 pub use web_server::{WebServeError, WebServer, WebServerError, WebServerOptions};

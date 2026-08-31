@@ -18,13 +18,24 @@ use std::time::{Duration, Instant};
 use crate::aura_bluez::AuraBluezConfig;
 use crate::backend::PairBackend;
 use crate::backend_native::{JblPairConfigurationProbe, NativePairBackend};
+use crate::capability::authentics_300_capabilities;
+use crate::client::JblLanClient;
 use crate::config::RuntimeConfig;
 use crate::controller::{
-    ControllerActionOutcome, ControllerActionResult, PairConfigurationProbe, PairController,
+    ControllerActionOutcome, ControllerActionResult, ExternalPrepareFailure,
+    PairConfigurationProbe, PairController,
 };
+use crate::eq::EqPresetWriteResult;
+use crate::error::JblError;
+use crate::inspection::InspectionReadError;
 use crate::journal::{FileUncertaintyJournal, UncertaintyJournal};
 use crate::local_client::{LocalClientError, LocalServiceClient};
+use crate::media::{AudioSourceWriteResult, MuteWriteResult, VolumeWriteResult};
 use crate::web::{RevisionConflict, WebActor, WebMutation};
+use crate::web_device::{
+    DirectActionOutcome, DirectActionResult, DirectFailure, DirectMutation, DirectObservation,
+    DirectSnapshot,
+};
 
 // v0.4 and Rust share this owner-only lock namespace. Rust holds both files
 // for its complete service lifetime: `operation.lock` excludes every public
@@ -38,6 +49,9 @@ const USER_UNIT: &str = "jbl-aura-link-rust.service";
 const SYSTEMCTL_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_READY_TIMEOUT: Duration = Duration::from_secs(15);
 const READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const WEB_DIRECT_REQUEST_TIMEOUT: Duration = Duration::from_millis(500);
+const WEB_DIRECT_CACHE_TTL: Duration = Duration::from_secs(2);
+const WEB_DIRECT_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServiceRuntimeError {
@@ -96,19 +110,303 @@ impl fmt::Display for ServiceRuntimeError {
 
 impl std::error::Error for ServiceRuntimeError {}
 
+pub(crate) trait DirectDeviceSurface {
+    fn snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure>;
+    fn mutate(
+        &mut self,
+        lock: &mut DirectControlLock,
+        mutation: DirectMutation,
+    ) -> DirectActionResult;
+}
+
+struct JblDirectSurface {
+    client: JblLanClient,
+    expected_model: String,
+    cached_snapshot: Option<(Instant, DirectSnapshot)>,
+}
+
+impl DirectDeviceSurface for JblDirectSurface {
+    fn snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure> {
+        if let Some((observed_at, snapshot)) = &self.cached_snapshot {
+            if observed_at.elapsed() <= WEB_DIRECT_CACHE_TTL {
+                return Ok(snapshot.clone());
+            }
+        }
+        let observe = || {
+            self.client
+                .direct_read(&self.expected_model)
+                .map_err(map_inspection_error)
+        };
+        let observed = match observe() {
+            Ok(observed) => observed,
+            Err(DirectFailure::Unavailable | DirectFailure::DeviceRejected) => {
+                std::thread::sleep(WEB_DIRECT_RETRY_DELAY);
+                observe()?
+            }
+            Err(failure) => return Err(failure),
+        };
+        let snapshot = DirectSnapshot {
+            media: observed.media,
+            inspection: observed.inspection,
+            capabilities: authentics_300_capabilities().to_vec(),
+            source_targets: observed.source_targets,
+            active_eq: observed.active_eq,
+            revision: 0,
+        };
+        self.cached_snapshot = Some((Instant::now(), snapshot.clone()));
+        Ok(snapshot)
+    }
+
+    fn mutate(
+        &mut self,
+        lock: &mut DirectControlLock,
+        mutation: DirectMutation,
+    ) -> DirectActionResult {
+        self.cached_snapshot = None;
+        match mutation {
+            DirectMutation::Volume(value) => {
+                map_volume(self.client.set_volume(lock, &self.expected_model, value))
+            }
+            DirectMutation::Mute(target) => {
+                map_mute(self.client.set_mute(lock, &self.expected_model, target))
+            }
+            DirectMutation::Source(target) => map_source(self.client.set_audio_source(
+                lock,
+                &self.expected_model,
+                target,
+            )),
+            DirectMutation::EqPreset(target) => map_eq(self.client.set_eq_preset(
+                lock,
+                &self.expected_model,
+                target,
+            )),
+        }
+    }
+}
+
+fn map_direct_error(error: JblError) -> DirectFailure {
+    match error {
+        JblError::PeerCertificateMismatch
+        | JblError::UnexpectedDeviceModel
+        | JblError::DeviceInfoMissing
+        | JblError::ControlDeviceInfoMissing => DirectFailure::InvalidState,
+        JblError::NetworkUnreachable | JblError::HttpStatus(_) => DirectFailure::Unavailable,
+        JblError::ControlCommandRejected
+        | JblError::DeviceReportedError
+        | JblError::UpnpActionRejected => DirectFailure::DeviceRejected,
+        JblError::InvalidVolume
+        | JblError::VolumeSafetyLimitExceeded
+        | JblError::MediaVolumeMissing
+        | JblError::MediaMuteMissing => DirectFailure::SafetyGate,
+        JblError::UnsupportedMediaSource | JblError::EqPresetInvalid => {
+            DirectFailure::UnsupportedTarget
+        }
+        JblError::PlaybackPreconditionFailed => DirectFailure::InvalidState,
+        JblError::ConfigUnavailable
+        | JblError::ConfigPermissions
+        | JblError::ConfigTooLarge
+        | JblError::InvalidConfig
+        | JblError::MissingSetting(_)
+        | JblError::InvalidTimeout
+        | JblError::InvalidAddress
+        | JblError::CertificateUnavailable
+        | JblError::CertificatePermissions
+        | JblError::PrivateKeyUnavailable
+        | JblError::PrivateKeyPermissions
+        | JblError::InvalidTlsFingerprint
+        | JblError::InvalidClientIdentity
+        | JblError::CredentialFileInvalid
+        | JblError::CredentialTooLarge
+        | JblError::TlsConfiguration => DirectFailure::Unavailable,
+        _ => DirectFailure::InvalidState,
+    }
+}
+
+fn map_inspection_error(error: InspectionReadError) -> DirectFailure {
+    match error {
+        InspectionReadError::Device(error) => map_direct_error(error),
+        InspectionReadError::Response(_) => DirectFailure::InvalidState,
+    }
+}
+
+fn map_volume(result: VolumeWriteResult) -> DirectActionResult {
+    match result {
+        VolumeWriteResult::AlreadyAtTarget(value) => direct_result(
+            DirectActionOutcome::AlreadyAtTarget,
+            Some(DirectObservation::Volume {
+                volume: value.volume,
+                muted: value.muted,
+            }),
+            None,
+        ),
+        VolumeWriteResult::Applied(value) => direct_result(
+            DirectActionOutcome::Applied,
+            Some(DirectObservation::Volume {
+                volume: value.volume,
+                muted: value.muted,
+            }),
+            None,
+        ),
+        VolumeWriteResult::TargetObservedAfterUnknownWrite(value) => direct_result(
+            DirectActionOutcome::TargetObservedAfterUnknownWrite,
+            Some(DirectObservation::Volume {
+                volume: value.volume,
+                muted: value.muted,
+            }),
+            Some(DirectFailure::OutcomeUnknown),
+        ),
+        VolumeWriteResult::PostconditionFailed(value) => direct_result(
+            DirectActionOutcome::PostconditionFailed,
+            Some(DirectObservation::Volume {
+                volume: value.volume,
+                muted: value.muted,
+            }),
+            None,
+        ),
+        VolumeWriteResult::RejectedBeforeSend(error) => rejected_before(error),
+        VolumeWriteResult::OutcomeUnknown(error) => unknown(error),
+    }
+}
+
+fn map_mute(result: MuteWriteResult) -> DirectActionResult {
+    match result {
+        MuteWriteResult::AlreadyAtTarget(value) => direct_result(
+            DirectActionOutcome::AlreadyAtTarget,
+            Some(DirectObservation::Mute { muted: value.muted }),
+            None,
+        ),
+        MuteWriteResult::Applied(value) => direct_result(
+            DirectActionOutcome::Applied,
+            Some(DirectObservation::Mute { muted: value.muted }),
+            None,
+        ),
+        MuteWriteResult::TargetObservedAfterUnknownWrite(value) => direct_result(
+            DirectActionOutcome::TargetObservedAfterUnknownWrite,
+            Some(DirectObservation::Mute { muted: value.muted }),
+            Some(DirectFailure::OutcomeUnknown),
+        ),
+        MuteWriteResult::PostconditionFailed(value) => direct_result(
+            DirectActionOutcome::PostconditionFailed,
+            Some(DirectObservation::Mute { muted: value.muted }),
+            None,
+        ),
+        MuteWriteResult::RejectedBeforeSend(error) => rejected_before(error),
+        MuteWriteResult::OutcomeUnknown(error) => unknown(error),
+    }
+}
+
+fn map_source(result: AudioSourceWriteResult) -> DirectActionResult {
+    match result {
+        AudioSourceWriteResult::AlreadyAtTarget(source) => direct_result(
+            DirectActionOutcome::AlreadyAtTarget,
+            Some(DirectObservation::Source { source }),
+            None,
+        ),
+        AudioSourceWriteResult::Applied(source) => direct_result(
+            DirectActionOutcome::Applied,
+            Some(DirectObservation::Source { source }),
+            None,
+        ),
+        AudioSourceWriteResult::RejectedByDevice(source) => direct_result(
+            DirectActionOutcome::RejectedByDevice,
+            Some(DirectObservation::Source { source }),
+            Some(DirectFailure::DeviceRejected),
+        ),
+        AudioSourceWriteResult::TargetObservedAfterUnknownWrite(source) => direct_result(
+            DirectActionOutcome::TargetObservedAfterUnknownWrite,
+            Some(DirectObservation::Source { source }),
+            Some(DirectFailure::OutcomeUnknown),
+        ),
+        AudioSourceWriteResult::PostconditionFailed(source) => direct_result(
+            DirectActionOutcome::PostconditionFailed,
+            Some(DirectObservation::Source { source }),
+            None,
+        ),
+        AudioSourceWriteResult::RejectedBeforeSend(error) => rejected_before(error),
+        AudioSourceWriteResult::OutcomeUnknown(error) => unknown(error),
+    }
+}
+
+fn map_eq(result: EqPresetWriteResult) -> DirectActionResult {
+    match result {
+        EqPresetWriteResult::AlreadyAtTarget(preset) => direct_result(
+            DirectActionOutcome::AlreadyAtTarget,
+            Some(DirectObservation::EqPreset {
+                preset: Some(preset),
+            }),
+            None,
+        ),
+        EqPresetWriteResult::Applied(preset) => direct_result(
+            DirectActionOutcome::Applied,
+            Some(DirectObservation::EqPreset {
+                preset: Some(preset),
+            }),
+            None,
+        ),
+        EqPresetWriteResult::RejectedByDevice(preset) => direct_result(
+            DirectActionOutcome::RejectedByDevice,
+            Some(DirectObservation::EqPreset {
+                preset: Some(preset),
+            }),
+            Some(DirectFailure::DeviceRejected),
+        ),
+        EqPresetWriteResult::TargetObservedAfterUnknownWrite(preset) => direct_result(
+            DirectActionOutcome::TargetObservedAfterUnknownWrite,
+            Some(DirectObservation::EqPreset {
+                preset: Some(preset),
+            }),
+            Some(DirectFailure::OutcomeUnknown),
+        ),
+        EqPresetWriteResult::PostconditionFailed(preset) => direct_result(
+            DirectActionOutcome::PostconditionFailed,
+            Some(DirectObservation::EqPreset { preset }),
+            None,
+        ),
+        EqPresetWriteResult::RejectedBeforeSend(error) => rejected_before(error),
+        EqPresetWriteResult::OutcomeUnknown(error) => unknown(error),
+    }
+}
+
+const fn direct_result(
+    outcome: DirectActionOutcome,
+    observation: Option<DirectObservation>,
+    failure: Option<DirectFailure>,
+) -> DirectActionResult {
+    DirectActionResult::new(outcome, observation, failure)
+}
+
+fn rejected_before(error: JblError) -> DirectActionResult {
+    direct_result(
+        DirectActionOutcome::RejectedBeforeSend,
+        None,
+        Some(map_direct_error(error)),
+    )
+}
+
+fn unknown(error: JblError) -> DirectActionResult {
+    let _ = error;
+    direct_result(
+        DirectActionOutcome::OutcomeUnknown,
+        None,
+        Some(DirectFailure::OutcomeUnknown),
+    )
+}
+
 /// Web adapter around the only in-process controller owner.
 pub(crate) struct ControllerWebActor<
     B: PairBackend,
     P: PairConfigurationProbe,
     J: UncertaintyJournal,
+    D: DirectDeviceSurface,
 > {
     controller: PairController<B, P, J>,
+    direct: D,
     teardown_done: bool,
-    _process_lock: ControllerProcessLock,
+    direct_lock: DirectControlLock,
 }
 
-impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> Drop
-    for ControllerWebActor<B, P, J>
+impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal, D: DirectDeviceSurface> Drop
+    for ControllerWebActor<B, P, J, D>
 {
     fn drop(&mut self) {
         // Covers listener accept errors, unwinding, and any other path that
@@ -119,13 +417,77 @@ impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> Drop
     }
 }
 
-impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> ControllerWebActor<B, P, J> {
-    const fn new(controller: PairController<B, P, J>, process_lock: ControllerProcessLock) -> Self {
+impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal, D: DirectDeviceSurface>
+    ControllerWebActor<B, P, J, D>
+{
+    const fn new(
+        controller: PairController<B, P, J>,
+        direct: D,
+        direct_lock: DirectControlLock,
+    ) -> Self {
         Self {
             controller,
+            direct,
             teardown_done: false,
-            _process_lock: process_lock,
+            direct_lock,
         }
+    }
+
+    pub(crate) fn direct_snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure> {
+        if self.controller.has_unresolved_action() {
+            return Err(DirectFailure::InvalidState);
+        }
+        self.direct
+            .snapshot()
+            .map(|snapshot| snapshot.with_revision(self.controller.revision()))
+    }
+
+    pub(crate) fn mutate_direct_if_revision(
+        &mut self,
+        expected_revision: u64,
+        mutation: DirectMutation,
+    ) -> Result<DirectActionResult, RevisionConflict> {
+        if self.controller.revision() != expected_revision {
+            return Err(RevisionConflict);
+        }
+        if let Err(failure) = self.controller.prepare_external_action() {
+            let revision = self.controller.note_external_action();
+            return Ok(match failure {
+                ExternalPrepareFailure::UnresolvedPriorAction => DirectActionResult::new(
+                    DirectActionOutcome::RejectedBeforeSend,
+                    None,
+                    Some(DirectFailure::InvalidState),
+                ),
+                ExternalPrepareFailure::JournalUnavailable => DirectActionResult::new(
+                    DirectActionOutcome::RejectedBeforeSend,
+                    None,
+                    Some(DirectFailure::Unavailable),
+                ),
+                ExternalPrepareFailure::JournalCommitFailed => DirectActionResult::new(
+                    DirectActionOutcome::OutcomeUnknown,
+                    None,
+                    Some(DirectFailure::OutcomeUnknown),
+                ),
+            }
+            .with_revision(revision));
+        }
+        let result = self.direct.mutate(&mut self.direct_lock, mutation);
+        let uncertain = matches!(
+            result.outcome,
+            DirectActionOutcome::OutcomeUnknown
+                | DirectActionOutcome::TargetObservedAfterUnknownWrite
+        );
+        let finished = self.controller.finish_external_action(uncertain);
+        Ok(if finished.journal_failed {
+            DirectActionResult::new(
+                DirectActionOutcome::OutcomeUnknown,
+                None,
+                Some(DirectFailure::OutcomeUnknown),
+            )
+            .with_revision(finished.revision)
+        } else {
+            result.with_revision(finished.revision)
+        })
     }
 
     /// One bounded graceful shutdown.  If the controller has latched an
@@ -155,8 +517,8 @@ pub trait ServiceActor: WebActor {
     fn shutdown_for_exit(&mut self) -> Result<(), ServiceRuntimeError>;
 }
 
-impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> ServiceActor
-    for ControllerWebActor<B, P, J>
+impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal, D: DirectDeviceSurface>
+    ServiceActor for ControllerWebActor<B, P, J, D>
 {
     fn shutdown_for_exit(&mut self) -> Result<(), ServiceRuntimeError> {
         let shutdown_error = shutdown_error(self.shutdown());
@@ -201,6 +563,10 @@ pub fn build_native_service_actor(
     // the guard into the opaque actor so no public factory caller can create a
     // controller without holding cross-process ownership through shutdown.
     let process_lock = ControllerProcessLock::acquire()?;
+    let direct_lock = DirectControlLock {
+        _inner: process_lock,
+        _not_sync: PhantomData,
+    };
     let backend =
         NativePairBackend::new(config, AuraBluezConfig::default(), Duration::from_secs(2))
             .map_err(|_| ServiceRuntimeError::ControllerInitializationFailed)?;
@@ -208,9 +574,22 @@ pub fn build_native_service_actor(
         .map_err(|_| ServiceRuntimeError::ControllerInitializationFailed)?;
     let journal = FileUncertaintyJournal::open_default()
         .map_err(|_| ServiceRuntimeError::ControllerInitializationFailed)?;
+    let direct = JblDirectSurface {
+        client: JblLanClient::new(
+            &config.address,
+            &config.certificate,
+            &config.private_key,
+            &config.tls_sha256,
+            config.timeout.min(WEB_DIRECT_REQUEST_TIMEOUT),
+        )
+        .map_err(|_| ServiceRuntimeError::ControllerInitializationFailed)?,
+        expected_model: config.expected_model.clone(),
+        cached_snapshot: None,
+    };
     Ok(ControllerWebActor::new(
         PairController::with_journal(backend, probe, journal),
-        process_lock,
+        direct,
+        direct_lock,
     ))
 }
 
@@ -222,8 +601,8 @@ pub fn validate_native_runtime(config: &RuntimeConfig) -> Result<(), ServiceRunt
         .map_err(|_| ServiceRuntimeError::ControllerInitializationFailed)
 }
 
-impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> WebActor
-    for ControllerWebActor<B, P, J>
+impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal, D: DirectDeviceSurface>
+    WebActor for ControllerWebActor<B, P, J, D>
 {
     fn status(&mut self) -> crate::controller::ControllerStatus {
         self.controller.status()
@@ -242,6 +621,18 @@ impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> WebActor
             WebMutation::Stop => self.controller.stop(),
             WebMutation::RecoverStop => self.controller.recover_stop(),
         })
+    }
+
+    fn direct_snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure> {
+        ControllerWebActor::direct_snapshot(self)
+    }
+
+    fn mutate_direct_if_revision(
+        &mut self,
+        expected_revision: u64,
+        mutation: DirectMutation,
+    ) -> Result<DirectActionResult, RevisionConflict> {
+        ControllerWebActor::mutate_direct_if_revision(self, expected_revision, mutation)
     }
 }
 
@@ -596,6 +987,53 @@ mod tests {
     use std::fs::OpenOptions;
     use std::os::unix::fs::{symlink, DirBuilderExt, PermissionsExt};
     use std::sync::atomic::AtomicU64;
+
+    struct NoopDirect;
+
+    impl DirectDeviceSurface for NoopDirect {
+        fn snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure> {
+            Err(DirectFailure::Unavailable)
+        }
+
+        fn mutate(
+            &mut self,
+            _lock: &mut DirectControlLock,
+            _mutation: DirectMutation,
+        ) -> DirectActionResult {
+            DirectActionResult::new(
+                DirectActionOutcome::RejectedBeforeSend,
+                None,
+                Some(DirectFailure::Unavailable),
+            )
+        }
+    }
+
+    struct RecordingDirect {
+        calls: Arc<AtomicU64>,
+        result: DirectActionResult,
+    }
+
+    impl DirectDeviceSurface for RecordingDirect {
+        fn snapshot(&mut self) -> Result<DirectSnapshot, DirectFailure> {
+            Err(DirectFailure::Unavailable)
+        }
+
+        fn mutate(
+            &mut self,
+            _lock: &mut DirectControlLock,
+            _mutation: DirectMutation,
+        ) -> DirectActionResult {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.result
+        }
+    }
+
+    fn direct_lock(inner: ControllerProcessLock) -> DirectControlLock {
+        DirectControlLock {
+            _inner: inner,
+            _not_sync: PhantomData,
+        }
+    }
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::backend::{
@@ -819,15 +1257,18 @@ mod tests {
         ))
     }
 
-    fn shutdown_actor(
-        result: PairActionResult,
-        teardown_result: Result<(), PairBackendError>,
-    ) -> (
-        ControllerWebActor<ShutdownBackend, ReadyProbe, MemoryJournal>,
+    type ShutdownActor = ControllerWebActor<ShutdownBackend, ReadyProbe, MemoryJournal, NoopDirect>;
+    type ShutdownFixture = (
+        ShutdownActor,
         std::path::PathBuf,
         Arc<AtomicU64>,
         Arc<AtomicU64>,
-    ) {
+    );
+
+    fn shutdown_actor(
+        result: PairActionResult,
+        teardown_result: Result<(), PairBackendError>,
+    ) -> ShutdownFixture {
         let root = temporary_runtime();
         let process_lock = ControllerProcessLock::acquire_at(&root).unwrap();
         let shutdown_calls = Arc::new(AtomicU64::new(0));
@@ -843,7 +1284,7 @@ mod tests {
             MemoryJournal::clean(),
         );
         (
-            ControllerWebActor::new(controller, process_lock),
+            ControllerWebActor::new(controller, NoopDirect, direct_lock(process_lock)),
             root,
             shutdown_calls,
             teardown_calls,
@@ -1004,7 +1445,11 @@ mod tests {
                 clear_calls: Arc::clone(&journal_clear_calls),
             },
         );
-        drop(ControllerWebActor::new(controller, process_lock));
+        drop(ControllerWebActor::new(
+            controller,
+            NoopDirect,
+            direct_lock(process_lock),
+        ));
         assert_eq!(role_calls.load(Ordering::Relaxed), 0);
         assert_eq!(teardown_calls.load(Ordering::Relaxed), 1);
         assert!(journal_pending.load(Ordering::Acquire));
@@ -1031,7 +1476,7 @@ mod tests {
                 clear_calls: Arc::clone(&journal_clear_calls),
             },
         );
-        let mut actor = ControllerWebActor::new(controller, process_lock);
+        let mut actor = ControllerWebActor::new(controller, NoopDirect, direct_lock(process_lock));
         assert_eq!(
             actor.shutdown_for_exit(),
             Err(ServiceRuntimeError::GracefulShutdownRejected)
@@ -1042,6 +1487,164 @@ mod tests {
         assert_eq!(journal_clear_calls.load(Ordering::Relaxed), 0);
         drop(actor);
         assert_eq!(teardown_calls.load(Ordering::Relaxed), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn actor_owned_direct_lock_excludes_competitors_and_direct_revision_bumps_once() {
+        let root = temporary_runtime();
+        let process_lock = ControllerProcessLock::acquire_at(&root).unwrap();
+        let direct_calls = Arc::new(AtomicU64::new(0));
+        let shutdown_calls = Arc::new(AtomicU64::new(0));
+        let teardown_calls = Arc::new(AtomicU64::new(0));
+        let controller = PairController::with_journal(
+            ShutdownBackend {
+                result: accepted_shutdown(),
+                teardown_result: Ok(()),
+                shutdown_calls: Arc::clone(&shutdown_calls),
+                teardown_calls: Arc::clone(&teardown_calls),
+            },
+            ReadyProbe,
+            MemoryJournal::clean(),
+        );
+        let direct = RecordingDirect {
+            calls: Arc::clone(&direct_calls),
+            result: DirectActionResult::new(DirectActionOutcome::Applied, None, None),
+        };
+        let mut actor = ControllerWebActor::new(controller, direct, direct_lock(process_lock));
+        assert!(matches!(
+            ControllerProcessLock::acquire_at(&root),
+            Err(ServiceRuntimeError::AlreadyRunning)
+        ));
+        let result = actor
+            .mutate_direct_if_revision(0, DirectMutation::Volume(9))
+            .expect("fresh direct revision");
+        assert_eq!(result.revision, 1);
+        assert_eq!(direct_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(shutdown_calls.load(Ordering::Relaxed), 0);
+        assert!(actor.controller.status().last_action().is_none());
+        assert!(actor
+            .mutate_direct_if_revision(0, DirectMutation::Volume(8))
+            .is_err());
+        assert_eq!(direct_calls.load(Ordering::Relaxed), 1);
+        let next = actor
+            .mutate_direct_if_revision(1, DirectMutation::Volume(8))
+            .expect("known result cleared direct marker");
+        assert_eq!(next.revision, 2);
+        assert_eq!(direct_calls.load(Ordering::Relaxed), 2);
+        drop(actor);
+        drop(ControllerProcessLock::acquire_at(&root).unwrap());
+        assert_eq!(teardown_calls.load(Ordering::Relaxed), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn direct_unknown_latches_and_blocks_snapshot_and_second_surface_call() {
+        let root = temporary_runtime();
+        let process_lock = ControllerProcessLock::acquire_at(&root).unwrap();
+        let direct_calls = Arc::new(AtomicU64::new(0));
+        let controller = PairController::with_journal(
+            ShutdownBackend {
+                result: accepted_shutdown(),
+                teardown_result: Ok(()),
+                shutdown_calls: Arc::new(AtomicU64::new(0)),
+                teardown_calls: Arc::new(AtomicU64::new(0)),
+            },
+            ReadyProbe,
+            MemoryJournal::clean(),
+        );
+        let direct = RecordingDirect {
+            calls: Arc::clone(&direct_calls),
+            result: DirectActionResult::new(
+                DirectActionOutcome::OutcomeUnknown,
+                None,
+                Some(DirectFailure::OutcomeUnknown),
+            ),
+        };
+        let mut actor = ControllerWebActor::new(controller, direct, direct_lock(process_lock));
+        let first = actor
+            .mutate_direct_if_revision(0, DirectMutation::Volume(9))
+            .expect("first direct call");
+        assert_eq!(first.outcome, DirectActionOutcome::OutcomeUnknown);
+        assert_eq!(first.revision, 1);
+        assert_eq!(direct_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(actor.direct_snapshot(), Err(DirectFailure::InvalidState));
+        let second = actor
+            .mutate_direct_if_revision(1, DirectMutation::Volume(8))
+            .expect("blocked direct result");
+        assert_eq!(second.outcome, DirectActionOutcome::RejectedBeforeSend);
+        assert_eq!(second.failure, Some(DirectFailure::InvalidState));
+        assert_eq!(direct_calls.load(Ordering::Relaxed), 1);
+        drop(actor);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn pair_pending_journal_blocks_direct_surface_before_call() {
+        let root = temporary_runtime();
+        let process_lock = ControllerProcessLock::acquire_at(&root).unwrap();
+        let direct_calls = Arc::new(AtomicU64::new(0));
+        let controller = PairController::with_journal(
+            ShutdownBackend {
+                result: accepted_shutdown(),
+                teardown_result: Ok(()),
+                shutdown_calls: Arc::new(AtomicU64::new(0)),
+                teardown_calls: Arc::new(AtomicU64::new(0)),
+            },
+            ReadyProbe,
+            MemoryJournal::pending(JournalAction::Start),
+        );
+        let direct = RecordingDirect {
+            calls: Arc::clone(&direct_calls),
+            result: DirectActionResult::new(DirectActionOutcome::Applied, None, None),
+        };
+        let mut actor = ControllerWebActor::new(controller, direct, direct_lock(process_lock));
+        assert_eq!(actor.direct_snapshot(), Err(DirectFailure::InvalidState));
+        let result = actor
+            .mutate_direct_if_revision(0, DirectMutation::Mute(crate::media::MuteTarget::On))
+            .expect("blocked direct result");
+        assert_eq!(result.outcome, DirectActionOutcome::RejectedBeforeSend);
+        assert_eq!(direct_calls.load(Ordering::Relaxed), 0);
+        drop(actor);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn weak_direct_readback_latches_before_a_second_surface_call() {
+        let root = temporary_runtime();
+        let process_lock = ControllerProcessLock::acquire_at(&root).unwrap();
+        let direct_calls = Arc::new(AtomicU64::new(0));
+        let controller = PairController::with_journal(
+            ShutdownBackend {
+                result: accepted_shutdown(),
+                teardown_result: Ok(()),
+                shutdown_calls: Arc::new(AtomicU64::new(0)),
+                teardown_calls: Arc::new(AtomicU64::new(0)),
+            },
+            ReadyProbe,
+            MemoryJournal::clean(),
+        );
+        let direct = RecordingDirect {
+            calls: Arc::clone(&direct_calls),
+            result: DirectActionResult::new(
+                DirectActionOutcome::TargetObservedAfterUnknownWrite,
+                None,
+                Some(DirectFailure::OutcomeUnknown),
+            ),
+        };
+        let mut actor = ControllerWebActor::new(controller, direct, direct_lock(process_lock));
+        let first = actor
+            .mutate_direct_if_revision(0, DirectMutation::Volume(9))
+            .expect("weak direct result");
+        assert_eq!(
+            first.outcome,
+            DirectActionOutcome::TargetObservedAfterUnknownWrite
+        );
+        let _blocked = actor
+            .mutate_direct_if_revision(1, DirectMutation::Volume(8))
+            .expect("blocked direct result");
+        assert_eq!(direct_calls.load(Ordering::Relaxed), 1);
+        drop(actor);
         fs::remove_dir_all(root).unwrap();
     }
 }

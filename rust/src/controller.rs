@@ -376,6 +376,19 @@ struct RecordedAction {
     recorded_at: Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExternalPrepareFailure {
+    UnresolvedPriorAction,
+    JournalUnavailable,
+    JournalCommitFailed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExternalFinish {
+    pub(crate) revision: u64,
+    pub(crate) journal_failed: bool,
+}
+
 /// Sanitized status snapshot.  No device identifier or raw diagnostic is
 /// representable in this type.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -530,6 +543,60 @@ impl<B: PairBackend, P: PairConfigurationProbe, J: UncertaintyJournal> PairContr
     /// Current compare-and-mutate revision without performing a LAN or
     /// Bluetooth status read.
     pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) const fn has_unresolved_action(&self) -> bool {
+        self.unresolved_action
+    }
+
+    pub(crate) fn prepare_external_action(&mut self) -> Result<(), ExternalPrepareFailure> {
+        if self.unresolved_action {
+            return Err(ExternalPrepareFailure::UnresolvedPriorAction);
+        }
+        if self
+            .journal
+            .mark_pending(JournalAction::DirectControl)
+            .is_err()
+        {
+            self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+            if self.journal.is_pending() {
+                self.unresolved_action = true;
+                self.managed_state = ManagedLiveState::Unknown;
+                return Err(ExternalPrepareFailure::JournalCommitFailed);
+            }
+            return Err(ExternalPrepareFailure::JournalUnavailable);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish_external_action(&mut self, uncertain: bool) -> ExternalFinish {
+        let mut journal_failed = false;
+        if uncertain {
+            self.unresolved_action = true;
+            self.managed_state = ManagedLiveState::Unknown;
+            self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        } else if self.journal.clear().is_err() {
+            self.unresolved_action = true;
+            self.managed_state = ManagedLiveState::Unknown;
+            self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+            journal_failed = true;
+        } else {
+            self.unresolved_action = false;
+            self.consecutive_failures = 0;
+        }
+        self.bump_revision();
+        ExternalFinish {
+            revision: self.revision,
+            journal_failed,
+        }
+    }
+
+    /// Advances the shared actor revision after one externally-owned direct
+    /// device action. It deliberately leaves managed Pair state and pair
+    /// `last_action` unchanged.
+    pub(crate) fn note_external_action(&mut self) -> u64 {
+        self.bump_revision();
         self.revision
     }
 
@@ -2032,5 +2099,114 @@ mod tests {
             drop(journal);
             std::fs::remove_dir_all(root).expect("cleanup");
         }
+    }
+
+    #[test]
+    fn direct_pending_survives_reopen_and_known_completion_clears_it() {
+        let root = temporary_journal_root("direct-reopen");
+        let journal = FileUncertaintyJournal::open_under(&root).expect("clean journal");
+        let mut controller = PairController::with_journal(
+            Backend::healthy(PairLifecycle::Ready, Vec::new()),
+            Probe::ready_reads(0),
+            journal,
+        );
+        controller
+            .prepare_external_action()
+            .expect("prepare direct");
+        drop(controller);
+
+        let reopened = FileUncertaintyJournal::open_under(&root).expect("reopen pending");
+        assert!(reopened.is_pending());
+        let mut controller = PairController::with_journal(
+            Backend::healthy(PairLifecycle::Ready, Vec::new()),
+            Probe::ready_reads(0),
+            reopened,
+        );
+        assert_eq!(
+            controller.prepare_external_action(),
+            Err(ExternalPrepareFailure::UnresolvedPriorAction)
+        );
+        // Simulate the existing explicit successful recovery clearing the same
+        // shared marker, then verify a new direct action can complete cleanly.
+        controller.journal.clear().expect("explicit recovery clear");
+        controller.unresolved_action = false;
+        controller
+            .prepare_external_action()
+            .expect("prepare after recovery");
+        let finished = controller.finish_external_action(false);
+        assert!(!finished.journal_failed);
+        let (_, _, journal) = controller.into_parts_with_journal();
+        assert!(!journal.is_pending());
+        drop(journal);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn direct_journal_commit_failure_latches_unknown_without_backend_call() {
+        let root = temporary_journal_root("direct-sync-failure");
+        let journal = FileUncertaintyJournal::open_under(&root).expect("clean journal");
+        journal.fail_directory_sync_on_nth_for_test(1);
+        let mut controller = PairController::with_journal(
+            Backend::healthy(PairLifecycle::Ready, Vec::new()),
+            Probe::ready_reads(0),
+            journal,
+        );
+        assert_eq!(
+            controller.prepare_external_action(),
+            Err(ExternalPrepareFailure::JournalCommitFailed)
+        );
+        assert!(controller.has_unresolved_action());
+        let (backend, _, journal) = controller.into_parts_with_journal();
+        assert_eq!(backend.action_calls, 0);
+        assert!(journal.is_pending());
+        drop(journal);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn direct_clear_failure_becomes_unknown_and_keeps_pending_marker() {
+        let root = temporary_journal_root("direct-clear-failure");
+        let journal = FileUncertaintyJournal::open_under(&root).expect("clean journal");
+        let mut controller = PairController::with_journal(
+            Backend::healthy(PairLifecycle::Ready, Vec::new()),
+            Probe::ready_reads(0),
+            journal,
+        );
+        controller
+            .prepare_external_action()
+            .expect("prepare direct");
+        controller.journal.fail_directory_sync_on_nth_for_test(1);
+        let finished = controller.finish_external_action(false);
+        assert!(finished.journal_failed);
+        assert!(controller.has_unresolved_action());
+        let (_, _, journal) = controller.into_parts_with_journal();
+        assert!(journal.is_pending());
+        drop(journal);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn successful_recover_stop_clears_direct_unknown_and_allows_next_prepare() {
+        let backend = Backend::healthy(
+            PairLifecycle::Ready,
+            vec![Backend::accepted(PairLifecycle::Ready)],
+        );
+        let probe = Probe::ready_reads(2);
+        let mut controller = PairController::new(backend, probe);
+        controller
+            .prepare_external_action()
+            .expect("prepare direct");
+        controller.finish_external_action(true);
+        assert!(controller.has_unresolved_action());
+        assert_eq!(
+            controller.recover_stop().outcome(),
+            ControllerActionOutcome::Accepted
+        );
+        assert!(!controller.has_unresolved_action());
+        controller
+            .prepare_external_action()
+            .expect("direct allowed after recovery");
+        let finished = controller.finish_external_action(false);
+        assert!(!finished.journal_failed);
     }
 }
